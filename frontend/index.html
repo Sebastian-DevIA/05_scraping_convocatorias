@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Convocatorias · Búsqueda operativa</title>
+    <meta
+      name="description"
+      content="Búsqueda de convocatorias, fondos y licitaciones reales scrapeadas de fuentes oficiales."
+    />
+    <link rel="stylesheet" href="/css/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <h1>Convocatorias</h1>
+        <p>Búsqueda operativa de propuestas, fondos y licitaciones reales</p>
+      </div>
+      <nav aria-label="Secciones">
+        <a href="#/dashboard" data-nav="dashboard">Dashboard</a>
+        <a href="#/convocatorias" data-nav="convocatorias">Buscar</a>
+        <a href="#/fuentes" data-nav="fuentes">Fuentes</a>
+      </nav>
+      <button id="refreshBtn" class="primary" title="Dispara un scraping real de todas las fuentes activas">
+        Actualizar ahora
+      </button>
+    </header>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <main id="app" class="shell" aria-live="polite"></main>
+
+    <dialog id="detailDialog" aria-labelledby="detailTitle">
+      <div class="dialog-head">
+        <h2 id="detailTitle"></h2>
+        <button id="closeDialog" aria-label="Cerrar detalle">×</button>
+      </div>
+      <div id="detailBody"></div>
+    </dialog>
+
+    <script src="/js/app.js" type="module"></script>
+  </body>
+</html>

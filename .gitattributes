@@ -1,0 +1,19 @@
+# Normalización de finales de línea. CRÍTICO: el repo se edita desde Windows
+# hacia WSL/contenedores Linux. Forzamos LF para evitar que los scripts .sh
+# (entrypoint) queden con CRLF y fallen al ejecutarse dentro del contenedor.
+* text=auto eol=lf
+
+# Scripts de shell: siempre LF.
+*.sh text eol=lf
+
+# Dockerfile y entrypoint sin extensión.
+Dockerfile text eol=lf
+entrypoint.sh text eol=lf
+
+# Binarios: sin conversión.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
