@@ -23,6 +23,10 @@ COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 COPY scripts ./scripts
 COPY tests ./tests
+# Manual de usuario (contexto de soporte de la capa de IA). Llega vía el
+# contexto adicional `docs` declarado en docker-compose (additional_contexts),
+# manteniendo docs/ como única fuente de verdad (sin duplicar ni bind-mount).
+COPY --from=docs . ./docs
 COPY entrypoint.sh ./entrypoint.sh
 
 # El bit ejecutable no siempre sobrevive al editar desde Windows: lo fijamos

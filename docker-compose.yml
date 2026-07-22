@@ -3,6 +3,10 @@
 # Puertos ocupados en esta máquina (stack n8n): 80, 5050, 5432, 6333, 6334,
 # 6379, 8080, 11434 -> NO usarlos en el host. Los puertos publicados son
 # configurables por env (DB_PORT, API_PORT, FRONTEND_PORT).
+#
+# El puerto 11434 ya está ocupado por otro stack, por eso el servicio `ollama`
+# NO publica puerto al host: solo es alcanzable dentro de la red de compose
+# como http://ollama:11434 (así lo usa la API vía OLLAMA_BASE_URL).
 name: convocatorias
 
 services:
@@ -26,10 +30,14 @@ services:
 
   # --- API (FastAPI + uvicorn) --------------------------------------------
   # entrypoint.sh: espera BD -> alembic upgrade head -> seed fuentes -> uvicorn
+  # additional_contexts.docs: copia docs/ a la imagen (manual para la IA de
+  # soporte) sin bind-mount y con docs/ como única fuente de verdad.
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      additional_contexts:
+        docs: ./docs
     env_file: .env
     ports:
       - "${API_PORT:-8100}:8000"
@@ -51,12 +59,50 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      additional_contexts:
+        docs: ./docs
     command: python -m app.worker.scheduler
     env_file: .env
     depends_on:
       api:
         condition: service_healthy
     restart: unless-stopped
+
+  # --- Ollama (IA local, sin puerto publicado) ----------------------------
+  # Sirve modelos de lenguaje libres dentro de la red de compose. La API lo
+  # usa como proveedor de IA primario (http://ollama:11434). Si no está
+  # disponible, la API degrada con gracia (fallback / mensaje claro).
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # --- Ollama init (descarga el modelo una sola vez) ----------------------
+  # Espera a que Ollama responda y hace `ollama pull` del modelo configurado.
+  # La primera descarga puede pesar varios GB. restart: "no" -> corre una vez.
+  ollama-init:
+    image: ollama/ollama
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        echo 'Esperando a que Ollama responda...';
+        until ollama list >/dev/null 2>&1; do sleep 2; done;
+        echo 'Descargando modelo ${OLLAMA_MODEL:-llama3.2:3b} (puede tardar y pesar varios GB la primera vez)...';
+        ollama pull '${OLLAMA_MODEL:-llama3.2:3b}';
+        echo 'Modelo listo. Este contenedor termina aquí (restart: no).'
+    restart: "no"
 
   # --- Frontend (nginx sirve estáticos + proxy /api) ----------------------
   frontend:
@@ -73,3 +119,4 @@ services:
 
 volumes:
   pgdata:
+  ollama_models:

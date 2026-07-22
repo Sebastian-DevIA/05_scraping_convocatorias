@@ -384,7 +384,82 @@ async function showDetail(id) {
   }
   h += '<div class="detail-section"><h4>Descripcion</h4><p>' + (c.descripcion ? escapeHtml(c.descripcion) : '<span class="muted">Sin descripcion en la fuente.</span>') + "</p></div>";
   h += '<div class="detail-section"><h4>Requisitos</h4><p>' + (c.requisitos ? escapeHtml(c.requisitos) : '<span class="muted">No publicados en el listado de la fuente. Verificalos en la publicacion oficial.</span>') + "</p></div>";
+  h += '<div class="detail-section ai-resumen-block"><div class="ai-resumen-head"><h4>Resumen con IA</h4><button type="button" class="ghost" id="resumirBtn">Resumir con IA</button></div><div id="resumenBox"></div></div>';
   detailBody.innerHTML = h;
+  const rb = document.querySelector("#resumirBtn");
+  if (rb) rb.addEventListener("click", () => resumirConIA(c.id));
+}
+
+// ------------------------------------------------------------- ASISTENTE IA
+let aiLastQuestion = "";
+
+async function renderAsistente() {
+  setActiveNav("asistente");
+  let h = '<section class="card ai-intro">';
+  h += '<h2>Asistente de busqueda <span class="ai-tag" title="Interpretado por un modelo de IA">IA</span></h2>';
+  h += '<p class="muted">Escribe en lenguaje natural lo que buscas. La IA lo traduce a filtros y muestra convocatorias <b>reales</b> de la base de datos. Si la IA no esta disponible, se usa una busqueda por palabra clave simple con tu misma pregunta.</p>';
+  h += '<form id="aiForm" class="ai-form" autocomplete="off">';
+  h += '<input id="aiQ" maxlength="500" placeholder="Ej. fondos de innovacion abiertos en Antioquia" value="' + escapeAttr(aiLastQuestion) + '" />';
+  h += '<button type="submit" class="primary">Preguntar</button></form>';
+  h += '<div class="ai-examples"><span class="muted small">Ejemplos:</span>';
+  h += '<button type="button" class="chip" data-ex="licitaciones de software abiertas">licitaciones de software abiertas</button>';
+  h += '<button type="button" class="chip" data-ex="convocatorias de educacion en Bogota">convocatorias de educacion en Bogota</button></div>';
+  h += '</section><div id="aiResults"></div>';
+  app.innerHTML = h;
+  document.querySelector("#aiForm").addEventListener("submit", (ev) => { ev.preventDefault(); runAsistente(document.querySelector("#aiQ").value); });
+  document.querySelectorAll(".chip[data-ex]").forEach((b) => b.addEventListener("click", () => { document.querySelector("#aiQ").value = b.dataset.ex; runAsistente(b.dataset.ex); }));
+  if (aiLastQuestion) runAsistente(aiLastQuestion);
+}
+
+async function runAsistente(pregunta) {
+  pregunta = (pregunta || "").trim();
+  const box = document.querySelector("#aiResults");
+  if (!box) return;
+  if (!pregunta) { box.innerHTML = ""; return; }
+  aiLastQuestion = pregunta;
+  box.innerHTML = '<p class="muted loading">Consultando al asistente...</p>';
+  let data;
+  try {
+    data = await api("/ai/buscar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta }) });
+  } catch (e) {
+    box.innerHTML = '<div class="card"><p class="err-msg">No se pudo consultar el asistente: ' + escapeHtml(e.message) + "</p></div>";
+    return;
+  }
+  const r = data.resultado;
+  const filtros = data.filtros_interpretados || {};
+  const chips = Object.keys(filtros).length
+    ? Object.entries(filtros).map(([k, v]) => '<span class="kw">' + escapeHtml(k) + ": " + escapeHtml(String(v)) + "</span>").join("")
+    : '<span class="muted small">sin filtros</span>';
+  const banner = (data.ia_disponible && !data.fallback)
+    ? '<div class="ai-banner ok"><span class="ai-tag">IA</span> Consulta interpretada por IA. Verifica siempre en la publicacion oficial.</div>'
+    : '<div class="ai-banner warn"><span class="ai-tag">IA</span> El asistente de IA no esta disponible; se uso busqueda por palabra clave simple con tu pregunta.</div>';
+  let h = '<section class="card ai-interpret">' + banner;
+  h += '<div class="ai-filters"><span class="muted small">Filtros aplicados:</span> ' + chips + "</div></section>";
+  h += '<div class="results-head"><span class="muted">' + nfNum.format(r.total) + " resultado(s)</span></div>";
+  const cards = r.items.map(cardConvocatoria).join("") || '<div class="card"><p class="muted">No hay convocatorias para esta consulta. Prueba reformular o usa el buscador con filtros.</p></div>';
+  h += '<div class="results">' + cards + "</div>";
+  box.innerHTML = h;
+  bindCards();
+}
+
+async function resumirConIA(id) {
+  const btn = document.querySelector("#resumirBtn");
+  const box = document.querySelector("#resumenBox");
+  if (!box) return;
+  if (btn) { btn.disabled = true; btn.textContent = "Resumiendo..."; }
+  box.innerHTML = '<p class="muted loading">Generando resumen con IA...</p>';
+  try {
+    const data = await api("/ai/convocatorias/" + id + "/resumen", { method: "POST" });
+    if (data.ia_disponible && data.resumen) {
+      box.innerHTML = '<div class="ai-resumen"><div class="ai-resumen-tag"><span class="ai-tag">IA</span> Resumen generado por IA &mdash; verifica siempre la publicacion oficial</div><p>' + escapeHtml(data.resumen) + "</p></div>";
+    } else {
+      box.innerHTML = '<div class="ai-banner warn"><span class="ai-tag">IA</span> ' + escapeHtml(data.mensaje || "El servicio de IA no esta disponible ahora mismo.") + "</div>";
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="ai-banner warn"><span class="ai-tag">IA</span> No se pudo generar el resumen: ' + escapeHtml(e.message) + "</div>";
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Resumir con IA"; }
+  }
 }
 
 // ------------------------------------------------------------ REFRESH + ROUTER
@@ -420,6 +495,7 @@ async function route() {
     const parts = raw.slice(1).split("?");
     const path = parts[0], query = parts[1];
     if (path.indexOf("/convocatorias") === 0) { hydrateFiltersFromHash(query); return await renderConvocatorias(); }
+    if (path.indexOf("/asistente") === 0) return await renderAsistente();
     if (path.indexOf("/fuentes") === 0) return await renderFuentes();
     return await renderDashboard();
   } catch (error) {
@@ -430,5 +506,42 @@ async function route() {
 }
 
 refreshBtn.addEventListener("click", refreshAll);
+
+// --- Widget flotante de soporte con IA ---
+const supportFab = document.querySelector("#supportFab");
+const supportPanel = document.querySelector("#supportPanel");
+function toggleSupport(open) {
+  const willOpen = open === undefined ? supportPanel.hidden : open;
+  supportPanel.hidden = !willOpen;
+  supportFab.setAttribute("aria-expanded", String(willOpen));
+  if (willOpen) { const i = document.querySelector("#supportInput"); if (i) i.focus(); }
+}
+async function supportAsk(pregunta) {
+  const log = document.querySelector("#supportLog");
+  const input = document.querySelector("#supportInput");
+  pregunta = (pregunta || "").trim();
+  if (!pregunta) return;
+  log.insertAdjacentHTML("beforeend", '<div class="sup-msg user">' + escapeHtml(pregunta) + '</div>');
+  input.value = ""; input.disabled = true;
+  const pending = document.createElement("div");
+  pending.className = "sup-msg ai pending"; pending.textContent = "Pensando...";
+  log.appendChild(pending); log.scrollTop = log.scrollHeight;
+  try {
+    const data = await api("/ai/soporte", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pregunta }) });
+    pending.classList.remove("pending");
+    pending.innerHTML = '<span class="ai-tag">IA</span> ' + escapeHtml(data.respuesta);
+    if (!data.ia_disponible) pending.classList.add("warn");
+  } catch (e) {
+    pending.classList.remove("pending"); pending.classList.add("warn");
+    pending.textContent = "No se pudo obtener ayuda: " + e.message;
+  } finally {
+    input.disabled = false; input.focus(); log.scrollTop = log.scrollHeight;
+  }
+}
+if (supportFab) {
+  supportFab.addEventListener("click", () => toggleSupport());
+  document.querySelector("#supportClose").addEventListener("click", () => toggleSupport(false));
+  document.querySelector("#supportForm").addEventListener("submit", (ev) => { ev.preventDefault(); supportAsk(document.querySelector("#supportInput").value); });
+}
 window.addEventListener("hashchange", route);
 route();

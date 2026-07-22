@@ -19,6 +19,7 @@
       <nav aria-label="Secciones">
         <a href="#/dashboard" data-nav="dashboard">Dashboard</a>
         <a href="#/convocatorias" data-nav="convocatorias">Buscar</a>
+        <a href="#/asistente" data-nav="asistente">Asistente IA</a>
         <a href="#/fuentes" data-nav="fuentes">Fuentes</a>
       </nav>
       <button id="refreshBtn" class="primary" title="Dispara un scraping real de todas las fuentes activas">
@@ -37,6 +38,25 @@
       </div>
       <div id="detailBody"></div>
     </dialog>
+
+    <!-- Widget flotante de soporte con IA (ayuda de uso, basado en el manual) -->
+    <button id="supportFab" class="support-fab" title="Ayuda / soporte con IA" aria-haspopup="dialog" aria-expanded="false">
+      <span aria-hidden="true">?</span><span class="sr-only">Abrir ayuda</span>
+    </button>
+    <section id="supportPanel" class="support-panel" role="dialog" aria-label="Soporte con IA" hidden>
+      <div class="support-head">
+        <strong>Ayuda con IA</strong>
+        <span class="ai-tag" title="Las respuestas las genera un modelo de IA">IA</span>
+        <button id="supportClose" aria-label="Cerrar ayuda">&times;</button>
+      </div>
+      <div id="supportLog" class="support-log" aria-live="polite">
+        <p class="muted small">Pregunta cómo usar la herramienta (ej. "¿cómo disparo un scraping manual?"). Las respuestas se basan en el manual de usuario y las genera una IA: verifícalas.</p>
+      </div>
+      <form id="supportForm" class="support-form">
+        <input id="supportInput" maxlength="500" placeholder="Escribe tu duda de uso..." autocomplete="off" />
+        <button type="submit" class="primary">Enviar</button>
+      </form>
+    </section>
 
     <script src="/js/app.js" type="module"></script>
   </body>

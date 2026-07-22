@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://ollama:11434"
     # Modelo liviano que corre en CPU normal. Cambiable por env.
     ollama_model: str = "llama3.2:3b"
+    # Ruta del manual de usuario dentro del contenedor (contexto de soporte).
+    ai_manual_path: str = "/app/docs/MANUAL_USUARIO.md"
 
     # --- OpenRouter (respaldo remoto, API compatible con OpenAI) ---
     openrouter_api_key: str | None = None
