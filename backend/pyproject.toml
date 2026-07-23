@@ -9,7 +9,11 @@ description = "Sistema automatizado de búsqueda de convocatorias (API + worker)
 requires-python = ">=3.11"
 dependencies = [
     # --- Web / API ---
-    "fastapi>=0.110,<1.0",
+    # Fijado a la linea 0.115 (Starlette 0.4x). fastapi>=0.137 (Starlette 1.x)
+    # tiene un bug de enrutado: al anidar routers (app.include_router(api_router)
+    # con sub-includes) el ultimo sub-router incluido deja de servirse por ASGI
+    # aunque openapi lo liste, y el schema queda desincronizado. Verificado en vivo.
+    "fastapi>=0.115,<0.116",
     "uvicorn[standard]>=0.29,<1.0",
     # --- Datos / ORM ---
     "sqlalchemy>=2.0,<2.1",

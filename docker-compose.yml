@@ -30,17 +30,18 @@ services:
 
   # --- API (FastAPI + uvicorn) --------------------------------------------
   # entrypoint.sh: espera BD -> alembic upgrade head -> seed fuentes -> uvicorn
-  # additional_contexts.docs: copia docs/ a la imagen (manual para la IA de
-  # soporte) sin bind-mount y con docs/ como única fuente de verdad.
+  # El manual (contexto de la IA de soporte) se monta en runtime desde ./docs
+  # (volumen ro), no se copia en build: evita BuildKit/additional_contexts y
+  # mantiene docs/ como única fuente de verdad. Build compatible con WSL.
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      additional_contexts:
-        docs: ./docs
     env_file: .env
     ports:
       - "${API_PORT:-8100}:8000"
+    volumes:
+      - ./docs:/app/docs:ro
     depends_on:
       db:
         condition: service_healthy
@@ -59,8 +60,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      additional_contexts:
-        docs: ./docs
     command: python -m app.worker.scheduler
     env_file: .env
     depends_on:
