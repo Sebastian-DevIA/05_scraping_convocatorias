@@ -58,6 +58,7 @@ Listado paginado con filtros.
 | `estado` | string | Estado canónico. |
 | `tipo` | string | Tipo canónico. |
 | `departamento` | string | Departamento exacto. |
+| `apto_fundaciones_nuevas` | bool | Filtra por el flag derivado de aptitud para fundaciones nuevas/primerizas. `true` = solo las marcadas como aptas; `false` = solo las no marcadas; omitir = sin filtro. |
 | `fecha_publicacion_desde` | date (`YYYY-MM-DD`) | Límite inferior de `fecha_publicacion`. |
 | `fecha_publicacion_hasta` | date | Límite superior de `fecha_publicacion`. |
 | `fecha_cierre_desde` | date | Límite inferior de `fecha_cierre`. |
@@ -94,6 +95,7 @@ Listado paginado con filtros.
       "fecha_cierre": "2026-07-28T05:00:00+00:00",
       "url_original": "https://community.secop.gov.co/Public/Tendering/...",
       "keywords_match": ["inclusión digital", "población vulnerable", "tecnología"],
+      "apto_fundaciones_nuevas": false,
       "primera_vez_visto": "2026-07-11T06:00:00+00:00",
       "ultima_vez_visto": "2026-07-21T06:00:00+00:00",
       "creado_en": "2026-07-11T06:00:00+00:00",
@@ -105,6 +107,15 @@ Listado paginado con filtros.
   "page_size": 20
 }
 ```
+
+- `apto_fundaciones_nuevas` (bool): flag **derivado** (heurístico, trazable) que
+  calcula el pipeline desde el contenido real (título + descripción + requisitos
+  + modalidad). `true` = se hallaron señales de apertura a organizaciones nuevas/
+  primerizas y ninguna señal descalificante (exigencia de trayectoria). `false` =
+  sin evidencia (**no** afirma "no apto"). Puede tener falsos positivos/negativos:
+  verificar siempre en la publicación oficial. No es un dato de la fuente.
+- Códigos de `fuente` disponibles: `secop`, `pnud`, `minciencias`, `mintic`,
+  `worldbank`, `grantsgov` (activas) y `ungm` (stub, inactiva).
 
 ---
 
@@ -134,6 +145,33 @@ Igual que un item de la lista, **más**:
 ```json
 { "detail": "Convocatoria no encontrada" }
 ```
+
+---
+
+## `POST /api/v1/convocatorias/export`
+
+Exporta a **Excel (`.xlsx`)** las convocatorias seleccionadas por el usuario (las
+que quiere participar). Incluye los datos para participar y `url_original` para
+verificar que la convocatoria existe en la fuente oficial.
+
+### Request body — `ConvocatoriaExportRequest`
+```json
+{ "ids": [1284, 1290, 1301] }
+```
+- `ids`: lista de ids de convocatorias (1..1000, **no vacía**). Ids inexistentes
+  se ignoran silenciosamente.
+
+### 200 OK
+Cuerpo binario: un archivo `.xlsx`.
+- `Content-Type`: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+- `Content-Disposition`: `attachment; filename="convocatorias_seleccionadas.xlsx"`.
+- Columnas: Título, Entidad emisora, Fuente, Estado, Tipo, Modalidad, País,
+  Departamento, Ciudad, Monto, Moneda, Publicación, Apertura, Cierre, Apta
+  fundaciones nuevas, Requisitos, Descripción, Palabras clave, URL original
+  (verificar), ID externo. Ordenado por fecha de cierre (próximas primero).
+
+### 422 Unprocessable Entity
+Si `ids` está vacío o supera 1000 elementos.
 
 ---
 

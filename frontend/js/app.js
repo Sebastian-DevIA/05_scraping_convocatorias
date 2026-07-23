@@ -17,17 +17,19 @@ const ORDENES = [
 ];
 
 const FILTER_KEYS = [
-  "q", "fuente", "estado", "tipo", "departamento",
+  "q", "fuente", "estado", "tipo", "departamento", "apto_fundaciones_nuevas",
   "fecha_publicacion_desde", "fecha_publicacion_hasta",
   "fecha_cierre_desde", "fecha_cierre_hasta",
   "monto_min", "monto_max", "orden",
 ];
 
-const state = { page: 1, pageSize: 20, filters: emptyFilters(), fuentesCache: null };
+// `selected`: ids (como string) de convocatorias marcadas "para participar".
+// Persiste entre páginas y vistas para poder exportarlas juntas a Excel.
+const state = { page: 1, pageSize: 20, filters: emptyFilters(), fuentesCache: null, selected: new Set() };
 
 function emptyFilters() {
   return {
-    q: "", fuente: "", estado: "", tipo: "", departamento: "",
+    q: "", fuente: "", estado: "", tipo: "", departamento: "", apto_fundaciones_nuevas: "",
     fecha_publicacion_desde: "", fecha_publicacion_hasta: "",
     fecha_cierre_desde: "", fecha_cierre_hasta: "",
     monto_min: "", monto_max: "", orden: "-fecha_publicacion",
@@ -92,6 +94,8 @@ function escapeHtml(value) {
   return String(value == null ? "" : value).replace(/[&<>"\x27]/g, (ch) => map[ch]);
 }
 function escapeAttr(value) { return escapeHtml(value).replace(/"/g, "&quot;"); }
+// Escapa y preserva saltos de linea (para descripcion/requisitos multilinea).
+function escapeMultiline(value) { return escapeHtml(value).replace(/\n/g, "<br>"); }
 
 function toast(msg, kind) {
   toastEl.textContent = msg;
@@ -181,6 +185,11 @@ async function renderConvocatorias() {
   html += '<label>Departamento<input id="f_departamento" placeholder="Ej. Antioquia" value="' + escapeAttr(f.departamento) + '" /></label>';
   html += "</div>";
   html += '<div class="filter-row">';
+  html += '<label class="check" title="Convocatorias marcadas (heuristica) como accesibles para fundaciones nuevas, primerizas o sin trayectoria previa. Verifica siempre en la publicacion oficial.">';
+  html += '<input type="checkbox" id="f_apto"' + (f.apto_fundaciones_nuevas === "true" ? " checked" : "") + " />";
+  html += "<span>Solo aptas para fundaciones nuevas / primerizas</span></label>";
+  html += "</div>";
+  html += '<div class="filter-row">';
   html += '<label>Publicada desde<input type="date" id="f_fpd" value="' + escapeAttr(f.fecha_publicacion_desde) + '" /></label>';
   html += '<label>Publicada hasta<input type="date" id="f_fph" value="' + escapeAttr(f.fecha_publicacion_hasta) + '" /></label>';
   html += '<label>Cierra desde<input type="date" id="f_fcd" value="' + escapeAttr(f.fecha_cierre_desde) + '" /></label>';
@@ -211,8 +220,10 @@ async function renderConvocatorias() {
 
 function applyFilters() {
   const g = (id) => (document.querySelector(id) ? document.querySelector(id).value : "").trim();
+  const apto = document.querySelector("#f_apto");
   state.filters = {
     q: g("#f_q"), fuente: g("#f_fuente"), estado: g("#f_estado"), tipo: g("#f_tipo"), departamento: g("#f_departamento"),
+    apto_fundaciones_nuevas: apto && apto.checked ? "true" : "",
     fecha_publicacion_desde: g("#f_fpd"), fecha_publicacion_hasta: g("#f_fph"),
     fecha_cierre_desde: g("#f_fcd"), fecha_cierre_hasta: g("#f_fch"),
     monto_min: g("#f_mmin"), monto_max: g("#f_mmax"), orden: g("#f_orden") || "-fecha_publicacion",
@@ -231,8 +242,9 @@ function cardConvocatoria(c) {
   }
   const loc = [c.ciudad, c.departamento, c.pais].filter(Boolean).join(", ") || "Ubicacion no informada";
   const kws = (c.keywords_match || []).slice(0, 5).map((k) => '<span class="kw">' + escapeHtml(k) + "</span>").join("");
+  const aptoBadge = c.apto_fundaciones_nuevas ? ' <span class="badge apto" title="Marcada (heuristica) como accesible para fundaciones nuevas o primerizas. Verifica en la publicacion oficial.">Fundaciones nuevas</span>' : "";
   let h = '<article class="card conv">';
-  h += '<div class="conv-top"><div class="conv-badges">' + badge(c.estado) + ' <span class="badge fuente">' + escapeHtml(c.fuente_codigo) + "</span> " + badge(c.tipo, "tipo") + "</div>" + cierreTag + "</div>";
+  h += '<div class="conv-top"><div class="conv-badges">' + badge(c.estado) + ' <span class="badge fuente">' + escapeHtml(c.fuente_codigo) + "</span> " + badge(c.tipo, "tipo") + aptoBadge + "</div>" + cierreTag + "</div>";
   h += '<h3 class="conv-title">' + escapeHtml(c.titulo) + "</h3>";
   h += '<div class="entidad-block" title="Organizacion que publica esta convocatoria">';
   h += '<span class="entidad-label">Entidad emisora</span>';
@@ -242,7 +254,10 @@ function cardConvocatoria(c) {
   h += "<span><b>Publicada</b> " + fdate(c.fecha_publicacion) + "</span>";
   h += "<span><b>Cierre</b> " + fdate(c.fecha_cierre) + "</span></div>";
   h += kws ? '<div class="kws">' + kws + "</div>" : "";
-  h += '<div class="conv-actions"><button class="ghost" data-detail="' + c.id + '">Ver ficha y validar</button>';
+  const sel = state.selected.has(String(c.id));
+  h += '<div class="conv-actions">';
+  h += '<label class="participar" title="Selecciona esta convocatoria para incluirla en la descarga a Excel"><input type="checkbox" data-select="' + c.id + '"' + (sel ? " checked" : "") + ' /> <span>Participar</span></label>';
+  h += '<button class="ghost" data-detail="' + c.id + '">Ver ficha y validar</button>';
   h += '<a class="verify" href="' + escapeAttr(c.url_original) + '" target="_blank" rel="noopener noreferrer">Ver publicacion oficial y verificar entidad &nearr;</a></div>';
   h += "</article>";
   return h;
@@ -339,6 +354,62 @@ async function pollFuentes(tries) {
 
 function bindCards() {
   document.querySelectorAll("[data-detail]").forEach((btn) => btn.addEventListener("click", () => showDetail(btn.dataset.detail)));
+  document.querySelectorAll("[data-select]").forEach((cb) => cb.addEventListener("change", () => {
+    const id = cb.dataset.select;
+    if (cb.checked) state.selected.add(id); else state.selected.delete(id);
+    updateSelectionBar();
+  }));
+  updateSelectionBar();
+}
+
+// ------------------------------------------------- SELECCION + EXPORT EXCEL
+function updateSelectionBar() {
+  const bar = document.querySelector("#selectionBar");
+  if (!bar) return;
+  const count = state.selected.size;
+  bar.hidden = count === 0;
+  const label = document.querySelector("#selectionCount");
+  if (label) label.textContent = count + " convocatoria(s) seleccionada(s) para participar";
+}
+
+function clearSelection() {
+  state.selected.clear();
+  document.querySelectorAll("[data-select]").forEach((cb) => { cb.checked = false; });
+  updateSelectionBar();
+}
+
+async function exportarSeleccionExcel() {
+  const ids = Array.from(state.selected).map((x) => Number(x)).filter((n) => !Number.isNaN(n));
+  if (!ids.length) { toast("No hay convocatorias seleccionadas.", "error"); return; }
+  const btn = document.querySelector("#exportExcelBtn");
+  const orig = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Generando Excel..."; }
+  try {
+    const res = await fetch(API + "/convocatorias/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) {
+      let detail = res.status + " " + res.statusText;
+      try { const b = await res.json(); if (b && b.detail) detail = typeof b.detail === "string" ? b.detail : JSON.stringify(b.detail); } catch (_) { /* sin json */ }
+      throw new Error(detail);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "convocatorias_seleccionadas.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("Excel generado con " + ids.length + " convocatoria(s).", "ok");
+  } catch (e) {
+    toast("No se pudo generar el Excel: " + e.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
 }
 
 // ------------------------------------------------------------------ DETALLE
@@ -357,6 +428,7 @@ async function showDetail(id) {
 
   let h = '<p class="detail-badges">' + badge(c.estado) + ' <span class="badge fuente">' + escapeHtml(c.fuente_nombre) + "</span> " + badge(c.tipo, "tipo");
   h += c.modalidad ? ' <span class="badge">' + escapeHtml(c.modalidad) + "</span>" : "";
+  h += c.apto_fundaciones_nuevas ? ' <span class="badge apto" title="Marcada (heuristica) como accesible para fundaciones nuevas o primerizas. Verifica en la publicacion oficial.">Fundaciones nuevas</span>' : "";
   h += "</p>";
   h += '<section class="verify-card">';
   h += '<div class="verify-head"><span class="verify-kicker">Validar organizacion emisora</span>';
@@ -382,8 +454,8 @@ async function showDetail(id) {
   if (c.keywords_match && c.keywords_match.length) {
     h += '<div class="kws">' + c.keywords_match.map((k) => '<span class="kw">' + escapeHtml(k) + "</span>").join("") + "</div>";
   }
-  h += '<div class="detail-section"><h4>Descripcion</h4><p>' + (c.descripcion ? escapeHtml(c.descripcion) : '<span class="muted">Sin descripcion en la fuente.</span>') + "</p></div>";
-  h += '<div class="detail-section"><h4>Requisitos</h4><p>' + (c.requisitos ? escapeHtml(c.requisitos) : '<span class="muted">No publicados en el listado de la fuente. Verificalos en la publicacion oficial.</span>') + "</p></div>";
+  h += '<div class="detail-section"><h4>Descripcion</h4><p class="pre">' + (c.descripcion ? escapeMultiline(c.descripcion) : '<span class="muted">Sin descripcion en la fuente.</span>') + "</p></div>";
+  h += '<div class="detail-section"><h4>Requisitos</h4><p class="pre">' + (c.requisitos ? escapeMultiline(c.requisitos) : '<span class="muted">No publicados en el listado de la fuente. Verificalos en la publicacion oficial.</span>') + "</p></div>";
   h += '<div class="detail-section ai-resumen-block"><div class="ai-resumen-head"><h4>Resumen con IA</h4><button type="button" class="ghost" id="resumirBtn">Resumir con IA</button></div><div id="resumenBox"></div></div>';
   detailBody.innerHTML = h;
   const rb = document.querySelector("#resumirBtn");
@@ -403,7 +475,8 @@ async function renderAsistente() {
   h += '<button type="submit" class="primary">Preguntar</button></form>';
   h += '<div class="ai-examples"><span class="muted small">Ejemplos:</span>';
   h += '<button type="button" class="chip" data-ex="licitaciones de software abiertas">licitaciones de software abiertas</button>';
-  h += '<button type="button" class="chip" data-ex="convocatorias de educacion en Bogota">convocatorias de educacion en Bogota</button></div>';
+  h += '<button type="button" class="chip" data-ex="convocatorias de educacion en Bogota">convocatorias de educacion en Bogota</button>';
+  h += '<button type="button" class="chip" data-ex="subvenciones para fundaciones nuevas o primerizas">subvenciones para fundaciones nuevas o primerizas</button></div>';
   h += '</section><div id="aiResults"></div>';
   app.innerHTML = h;
   document.querySelector("#aiForm").addEventListener("submit", (ev) => { ev.preventDefault(); runAsistente(document.querySelector("#aiQ").value); });
@@ -506,6 +579,12 @@ async function route() {
 }
 
 refreshBtn.addEventListener("click", refreshAll);
+
+// Barra de seleccion + descarga a Excel (elementos estaticos en index.html).
+const exportExcelBtn = document.querySelector("#exportExcelBtn");
+const clearSelectionBtn = document.querySelector("#clearSelectionBtn");
+if (exportExcelBtn) exportExcelBtn.addEventListener("click", exportarSeleccionExcel);
+if (clearSelectionBtn) clearSelectionBtn.addEventListener("click", clearSelection);
 
 // --- Widget flotante de soporte con IA ---
 const supportFab = document.querySelector("#supportFab");

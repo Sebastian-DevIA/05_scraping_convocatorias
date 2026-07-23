@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from app.constants import PAIS_DEFAULT
+from app.constants import (
+    PAIS_DEFAULT,
+    SEÑALES_EXPERIENCIA_REQUERIDA,
+    SEÑALES_FUNDACIONES_NUEVAS,
+)
 from app.pipeline.dedupe import hash_contenido, hash_dedupe
 from app.schemas.raw import RawConvocatoria
 from app.utils.text import clean_text, fold_text
@@ -22,13 +26,49 @@ def _utc(dt: datetime | None) -> datetime | None:
 
 def map_estado(estado_fuente: str) -> str:
     estado = fold_text(estado_fuente)
-    if any(x in estado for x in ("adjudic", "seleccionado", "awarded")):
+    if any(x in estado for x in ("adjudic", "seleccionado", "awarded", "award")):
         return "adjudicada"
-    if any(x in estado for x in ("cerrad", "closed", "cancelad", "terminad")):
+    if any(
+        x in estado
+        for x in ("cerrad", "closed", "cancelad", "terminad", "archiv", "expired")
+    ):
         return "cerrada"
-    if any(x in estado for x in ("abiert", "publicad", "convocad", "open", "published")):
+    if any(
+        x in estado
+        for x in (
+            "abiert",
+            "publicad",
+            "convocad",
+            "open",
+            "published",
+            "posted",
+            "forecast",
+            "vigente",
+            "active",
+        )
+    ):
         return "abierta"
     return "desconocido"
+
+
+def es_apto_fundaciones_nuevas(raw: RawConvocatoria) -> bool:
+    """Flag DERIVADO: ¿la convocatoria parece accesible a fundaciones nuevas?
+
+    Heurística determinista y trazable sobre el CONTENIDO REAL (título +
+    descripción + requisitos + modalidad). True solo si hay ≥1 señal positiva y
+    NINGUNA señal descalificante (exigencia de trayectoria/experiencia). Nunca
+    inventa datos: si no hay evidencia, devuelve False (no afirma "no apto").
+    """
+    texto = fold_text(
+        " ".join(
+            filter(None, [raw.titulo, raw.descripcion, raw.requisitos, raw.modalidad])
+        )
+    )
+    if not texto:
+        return False
+    if any(fold_text(s) in texto for s in SEÑALES_EXPERIENCIA_REQUERIDA):
+        return False
+    return any(fold_text(s) in texto for s in SEÑALES_FUNDACIONES_NUEVAS)
 
 
 def keywords_match(raw: RawConvocatoria, keywords: list[str]) -> list[str]:
@@ -61,6 +101,7 @@ def normalizar(raw: RawConvocatoria, codigo_fuente: str, keywords: list[str]) ->
         "requisitos": clean_text(raw.requisitos),
         "url_original": raw.url_original,
         "keywords_match": keywords_match(raw, keywords),
+        "apto_fundaciones_nuevas": es_apto_fundaciones_nuevas(raw),
         "raw": raw.raw or {},
     }
     contenido = {
@@ -83,6 +124,7 @@ def normalizar(raw: RawConvocatoria, codigo_fuente: str, keywords: list[str]) ->
             "requisitos",
             "url_original",
             "keywords_match",
+            "apto_fundaciones_nuevas",
         )
     }
     data["hash_dedupe"] = hash_dedupe(codigo_fuente, raw.id_externo)

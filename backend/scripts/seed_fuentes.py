@@ -63,6 +63,26 @@ FUENTES: list[dict] = [
         "max_paginas": 5,
         "rate_limit_seconds": 2.0,
     },
+    {
+        "codigo": "worldbank",
+        "nombre": "Banco Mundial (World Bank) - Procurement Notices",
+        # API JSON v2 (verificada en vivo 2026-07-23). Paginación por os/rows.
+        "url_base": "https://search.worldbank.org/api/v2/procnotices",
+        "tipo": "api",
+        "activa": True,
+        "max_paginas": 3,
+        "rate_limit_seconds": 1.0,
+    },
+    {
+        "codigo": "grantsgov",
+        "nombre": "Grants.gov (EE. UU.) - Subvenciones federales",
+        # API JSON search2 (POST, verificada en vivo 2026-07-23).
+        "url_base": "https://api.grants.gov/v1/api/search2",
+        "tipo": "api",
+        "activa": True,
+        "max_paginas": 2,
+        "rate_limit_seconds": 1.0,
+    },
 ]
 
 

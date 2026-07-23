@@ -46,6 +46,15 @@ class ConvocatoriaResponse(BaseModel):
 
     url_original: str
     keywords_match: list[str] = Field(default_factory=list)
+    apto_fundaciones_nuevas: bool = Field(
+        default=False,
+        description=(
+            "Flag DERIVADO (heurístico) de aptitud para fundaciones nuevas/"
+            "primerizas. True = se hallaron señales de apertura a nuevas "
+            "organizaciones sin exigencia de trayectoria. False = sin evidencia "
+            "(no afirma 'no apto'). Verificar siempre en la publicación oficial."
+        ),
+    )
 
     primera_vez_visto: datetime
     ultima_vez_visto: datetime
@@ -68,3 +77,20 @@ class ConvocatoriaPageResponse(BaseModel):
     total: int = Field(description="Total de filas que cumplen el filtro (sin paginar).")
     page: int = Field(description="Página actual (base 1).")
     page_size: int = Field(description="Tamaño de página.")
+
+
+class ConvocatoriaExportRequest(BaseModel):
+    """Cuerpo de `POST /convocatorias/export`: ids de convocatorias a exportar.
+
+    El usuario selecciona en el frontend las convocatorias en las que quiere
+    participar; se envían sus ids y la API devuelve un `.xlsx` con los datos
+    necesarios para participar (incluida `url_original` para verificar que la
+    convocatoria existe en la fuente oficial).
+    """
+
+    ids: list[int] = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Ids de convocatorias seleccionadas (1..1000).",
+    )

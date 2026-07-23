@@ -110,6 +110,35 @@ code { background: #eef2f7; padding: 1px 5px; border-radius: 5px; font-size: 13p
 .badge.adjudicada { color: #1e3a8a; border-color: #bfdbfe; background: #eff6ff; }
 .badge.error, .badge.cerrada { color: var(--red); border-color: #fecaca; background: #fef2f2; }
 .badge.parcial, .badge.vencida, .badge.en_curso { color: var(--amber); border-color: #fde68a; background: #fffbeb; }
+.badge.apto { color: #7c2d92; border-color: #e9d5ff; background: #faf5ff; font-weight: 600; }
+
+/* Checkbox de filtro (ej. aptas para fundaciones nuevas). */
+label.check { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; }
+label.check input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--blue); margin: 0; cursor: pointer; }
+label.check span { user-select: none; }
+
+/* Texto multilinea (descripcion/requisitos aplanados desde HTML de la fuente). */
+p.pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Checkbox "Participar" en cada tarjeta de resultado. */
+label.participar {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--blue);
+  padding: 6px 10px; border: 1px solid #bcd6ef; border-radius: 8px; background: #eff6fd;
+}
+label.participar input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--blue); margin: 0; cursor: pointer; }
+
+/* Barra flotante de seleccion + descarga a Excel. */
+.selection-bar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; z-index: 60;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: #16202c; color: #fff; padding: 12px 18px; border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(16, 24, 40, .35); max-width: min(680px, 92vw);
+}
+.selection-count { font-size: 14px; font-weight: 600; }
+.selection-actions { display: flex; gap: 8px; }
+.selection-bar .ghost { background: transparent; color: #cbd5e1; border: 1px solid #33465c; }
+.selection-bar .ghost:hover { color: #fff; border-color: #4b6079; }
 
 .toast {
   position: fixed; right: 20px; bottom: 20px; z-index: 50;

@@ -1,13 +1,20 @@
-"""Router de convocatorias. `GET /convocatorias` (listado) y `/{id}` (detalle)."""
+"""Router de convocatorias. `GET /convocatorias` (listado), `/{id}` (detalle) y
+`POST /convocatorias/export` (descarga a Excel de las seleccionadas)."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import ConvocatoriaFiltros, PaginacionParams, get_db
 from app.api.services import convocatorias as service
-from app.schemas.convocatoria import ConvocatoriaDetailResponse, ConvocatoriaPageResponse
+from app.schemas.convocatoria import (
+    ConvocatoriaDetailResponse,
+    ConvocatoriaExportRequest,
+    ConvocatoriaPageResponse,
+)
 
 router = APIRouter(tags=["convocatorias"])
+
+_XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @router.get(
@@ -22,6 +29,30 @@ def listar(
 ) -> ConvocatoriaPageResponse:
     """Listado paginado. Ver filtros y orden en `docs/api-contract.md`."""
     return service.listar_convocatorias(db, filtros, paginacion)
+
+
+@router.post(
+    "/export",
+    summary="Exporta a Excel (.xlsx) las convocatorias seleccionadas",
+    responses={200: {"content": {_XLSX_MEDIA: {}}, "description": "Archivo .xlsx"}},
+)
+def exportar_excel(
+    payload: ConvocatoriaExportRequest,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Recibe los ids seleccionados y devuelve un `.xlsx` con los datos para
+    participar (incluye `url_original` para verificar que la convocatoria existe).
+    """
+    contenido = service.exportar_convocatorias_excel(db, payload.ids)
+    return Response(
+        content=contenido,
+        media_type=_XLSX_MEDIA,
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="convocatorias_seleccionadas.xlsx"'
+            )
+        },
+    )
 
 
 @router.get(

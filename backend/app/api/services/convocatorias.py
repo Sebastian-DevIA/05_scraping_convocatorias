@@ -7,6 +7,7 @@ La forma exacta de la respuesta está congelada en `docs/api-contract.md`.
 """
 
 from datetime import date, datetime, time, timedelta, timezone
+from io import BytesIO
 
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session, joinedload
@@ -54,6 +55,10 @@ def _construir_condiciones(f: ConvocatoriaFiltros) -> list[ColumnElement[bool]]:
         condiciones.append(Convocatoria.tipo == f.tipo)
     if f.departamento:
         condiciones.append(Convocatoria.departamento == f.departamento)
+    if f.apto_fundaciones_nuevas is not None:
+        condiciones.append(
+            Convocatoria.apto_fundaciones_nuevas.is_(f.apto_fundaciones_nuevas)
+        )
 
     if f.fecha_publicacion_desde:
         condiciones.append(Convocatoria.fecha_publicacion >= _inicio_dia(f.fecha_publicacion_desde))
@@ -113,6 +118,7 @@ def _a_response(c: Convocatoria) -> ConvocatoriaResponse:
         fecha_cierre=c.fecha_cierre,
         url_original=c.url_original,
         keywords_match=list(c.keywords_match or []),
+        apto_fundaciones_nuevas=c.apto_fundaciones_nuevas,
         primera_vez_visto=c.primera_vez_visto,
         ultima_vez_visto=c.ultima_vez_visto,
         creado_en=c.creado_en,
@@ -174,3 +180,89 @@ def obtener_convocatoria(
     if convocatoria is None:
         return None
     return _a_detail_response(convocatoria, include_raw)
+
+
+def _fecha_excel(dt: datetime | None) -> str:
+    """Fecha en formato YYYY-MM-DD para el Excel. None -> cadena vacía."""
+    return dt.strftime("%Y-%m-%d") if dt else ""
+
+
+# Columnas del Excel: (encabezado, ancho, extractor). El orden prioriza lo que
+# se necesita para DECIDIR y PARTICIPAR; `url_original` permite verificar que la
+# convocatoria existe en la fuente oficial.
+_COLUMNAS_EXPORT = [
+    ("Título", 42, lambda c: c.titulo),
+    ("Entidad emisora", 32, lambda c: c.entidad or ""),
+    ("Fuente", 24, lambda c: c.fuente.nombre),
+    ("Estado", 12, lambda c: c.estado),
+    ("Tipo", 12, lambda c: c.tipo),
+    ("Modalidad", 20, lambda c: c.modalidad or ""),
+    ("País", 16, lambda c: c.pais or ""),
+    ("Departamento", 16, lambda c: c.departamento or ""),
+    ("Ciudad", 16, lambda c: c.ciudad or ""),
+    ("Monto", 16, lambda c: float(c.monto) if c.monto is not None else ""),
+    ("Moneda", 8, lambda c: c.moneda or ""),
+    ("Publicación", 13, lambda c: _fecha_excel(c.fecha_publicacion)),
+    ("Apertura", 13, lambda c: _fecha_excel(c.fecha_apertura)),
+    ("Cierre", 13, lambda c: _fecha_excel(c.fecha_cierre)),
+    ("Apta fundaciones nuevas", 14, lambda c: "Sí" if c.apto_fundaciones_nuevas else "No"),
+    ("Requisitos", 45, lambda c: c.requisitos or ""),
+    ("Descripción", 60, lambda c: c.descripcion or ""),
+    ("Palabras clave", 24, lambda c: ", ".join(c.keywords_match or [])),
+    ("URL original (verificar)", 55, lambda c: c.url_original),
+    ("ID externo", 22, lambda c: c.id_externo),
+]
+
+
+def exportar_convocatorias_excel(db: Session, ids: list[int]) -> bytes:
+    """Genera un `.xlsx` (bytes) con las convocatorias seleccionadas.
+
+    Incluye los datos necesarios para participar y `url_original` para verificar
+    que la convocatoria existe en la fuente oficial. Los ids inexistentes se
+    ignoran. Se ordena por fecha de cierre (próximas primero; sin fecha al final).
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    filas = (
+        db.execute(
+            select(Convocatoria)
+            .options(joinedload(Convocatoria.fuente))
+            .where(Convocatoria.id.in_(ids))
+            .order_by(
+                Convocatoria.fecha_cierre.asc().nulls_last(),
+                Convocatoria.id.asc(),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Convocatorias"
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_align = Alignment(vertical="center", wrap_text=True)
+    cell_align = Alignment(vertical="top", wrap_text=True)
+
+    for col_idx, (header, width, _fn) in enumerate(_COLUMNAS_EXPORT, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    for row_idx, convocatoria in enumerate(filas, start=2):
+        for col_idx, (_header, _width, extractor) in enumerate(_COLUMNAS_EXPORT, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=extractor(convocatoria))
+            cell.alignment = cell_align
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(_COLUMNAS_EXPORT))}{len(filas) + 1}"
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()

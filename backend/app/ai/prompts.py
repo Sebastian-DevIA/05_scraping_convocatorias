@@ -13,7 +13,15 @@ from app.constants import ESTADOS_CONVOCATORIA, TIPOS_CONVOCATORIA
 logger = logging.getLogger(__name__)
 
 # Códigos de fuente conocidos (los mismos que siembra scripts/seed_fuentes.py).
-FUENTES_CONOCIDAS = ("secop", "pnud", "minciencias", "mintic", "ungm")
+FUENTES_CONOCIDAS = (
+    "secop",
+    "pnud",
+    "minciencias",
+    "mintic",
+    "ungm",
+    "worldbank",
+    "grantsgov",
+)
 
 # Claves que el modelo PUEDE emitir al traducir lenguaje natural a filtros.
 # Es un subconjunto de ConvocatoriaFiltros (sin `orden`, que fija la app).
@@ -23,6 +31,7 @@ CLAVES_FILTRO = (
     "estado",
     "tipo",
     "departamento",
+    "apto_fundaciones_nuevas",
     "fecha_publicacion_desde",
     "fecha_publicacion_hasta",
     "fecha_cierre_desde",
@@ -48,6 +57,10 @@ apliquen):
 - "estado": uno de {list(ESTADOS_CONVOCATORIA)}.
 - "tipo": uno de {list(TIPOS_CONVOCATORIA)}.
 - "departamento": nombre exacto de un departamento colombiano (ej. "Antioquia").
+- "apto_fundaciones_nuevas": true SOLO si el usuario busca convocatorias
+  accesibles para fundaciones/organizaciones nuevas, primerizas, recién creadas,
+  sin experiencia/trayectoria previa, de emprendimiento o capital semilla. Omite
+  la clave si no lo pide.
 - "fecha_publicacion_desde" / "fecha_publicacion_hasta": fecha "YYYY-MM-DD".
 - "fecha_cierre_desde" / "fecha_cierre_hasta": fecha "YYYY-MM-DD".
 - "monto_min" / "monto_max": número (sin separadores de miles ni símbolos).

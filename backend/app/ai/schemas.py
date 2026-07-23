@@ -31,6 +31,7 @@ class AIFiltrosExtraidos(BaseModel):
     estado: EstadoConvocatoria | None = None
     tipo: TipoConvocatoria | None = None
     departamento: str | None = None
+    apto_fundaciones_nuevas: bool | None = None
     fecha_publicacion_desde: date | None = None
     fecha_publicacion_hasta: date | None = None
     fecha_cierre_desde: date | None = None

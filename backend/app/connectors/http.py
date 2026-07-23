@@ -75,6 +75,21 @@ class HttpClient:
         """GET con reintentos. Devuelve la respuesta (2xx/3xx) o lanza ConnectorError."""
         return self._request("GET", url, params=params, headers=headers)
 
+    def post(
+        self,
+        url: str,
+        *,
+        json: object | None = None,
+        params: dict | None = None,
+        headers: dict | None = None,
+    ) -> httpx.Response:
+        """POST con reintentos (para fuentes cuya API exige POST, ej. Grants.gov).
+
+        Mismo comportamiento que `get`: pausa/rate-limit, reintentos ante 429/5xx/red,
+        y traducción a excepciones tipadas de `base.py`.
+        """
+        return self._request("POST", url, params=params, headers=headers, json=json)
+
     def close(self) -> None:
         self._client.close()
 
@@ -92,6 +107,7 @@ class HttpClient:
         *,
         params: dict | None = None,
         headers: dict | None = None,
+        json: object | None = None,
     ) -> httpx.Response:
         retryer = Retrying(
             stop=stop_after_attempt(self._max_attempts),
@@ -99,7 +115,7 @@ class HttpClient:
             retry=retry_if_exception_type(_RETRYABLE),
             reraise=True,
         )
-        return retryer(self._do_request, method, url, params, headers)
+        return retryer(self._do_request, method, url, params, headers, json)
 
     def _do_request(
         self,
@@ -107,13 +123,16 @@ class HttpClient:
         url: str,
         params: dict | None,
         headers: dict | None,
+        json: object | None = None,
     ) -> httpx.Response:
         # Pausa ANTES de cada intento (incluye reintentos) -> throttling.
         if self._pause > 0:
             time.sleep(self._pause)
 
         try:
-            response = self._client.request(method, url, params=params, headers=headers)
+            response = self._client.request(
+                method, url, params=params, headers=headers, json=json
+            )
         except httpx.TimeoutException as exc:  # transitorio -> reintento
             raise SourceUnavailableError(f"timeout en {url}: {exc}") from exc
         except httpx.TransportError as exc:  # red/DNS/conexión -> reintento

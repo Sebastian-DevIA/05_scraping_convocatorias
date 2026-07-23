@@ -29,6 +29,17 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+    <!-- Barra flotante: aparece al seleccionar convocatorias "para participar". -->
+    <div id="selectionBar" class="selection-bar" role="region" aria-label="Convocatorias seleccionadas" hidden>
+      <span id="selectionCount" class="selection-count"></span>
+      <div class="selection-actions">
+        <button id="clearSelectionBtn" class="ghost" type="button">Limpiar</button>
+        <button id="exportExcelBtn" class="primary" type="button" title="Descarga las seleccionadas en un archivo Excel con los datos para participar">
+          Descargar Excel
+        </button>
+      </div>
+    </div>
+
     <main id="app" class="shell" aria-live="polite"></main>
 
     <dialog id="detailDialog" aria-labelledby="detailTitle">

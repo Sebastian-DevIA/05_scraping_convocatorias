@@ -72,6 +72,14 @@ class ConvocatoriaFiltros:
     estado: EstadoConvocatoria | None = Query(None, description="Estado canónico.")
     tipo: TipoConvocatoria | None = Query(None, description="Tipo canónico.")
     departamento: str | None = Query(None, description="Departamento exacto.")
+    apto_fundaciones_nuevas: bool | None = Query(
+        None,
+        description=(
+            "Filtra por el flag derivado de aptitud para fundaciones nuevas/"
+            "primerizas. true = solo las marcadas como aptas; false = solo las "
+            "no marcadas; omitir = sin filtro."
+        ),
+    )
 
     fecha_publicacion_desde: date | None = Query(
         None, description="Límite inferior de fecha_publicacion (YYYY-MM-DD, inclusive)."

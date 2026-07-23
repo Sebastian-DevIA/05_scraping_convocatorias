@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Computed,
     DateTime,
@@ -45,6 +46,7 @@ class Convocatoria(Base):
         Index("ix_convocatorias_fecha_cierre", "fecha_cierre"),
         Index("ix_convocatorias_fecha_publicacion", text("fecha_publicacion DESC")),
         Index("ix_convocatorias_departamento", "departamento"),
+        Index("ix_convocatorias_apto_fundaciones_nuevas", "apto_fundaciones_nuevas"),
         Index("ix_convocatorias_busqueda", "busqueda", postgresql_using="gin"),
     )
 
@@ -95,6 +97,13 @@ class Convocatoria(Base):
     # Trazabilidad del filtro por keywords.
     keywords_match: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, default=list, server_default="{}"
+    )
+
+    # Flag DERIVADO (heurístico) de aptitud para fundaciones nuevas/primerizas.
+    # Lo calcula el pipeline desde el contenido real (ver app.constants y
+    # app.pipeline.normalizer). False = sin evidencia; nunca afirma "no apto".
+    apto_fundaciones_nuevas: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
 
     # Payload íntegro tal cual lo entregó la fuente (auditoría).
