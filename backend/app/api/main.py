@@ -7,7 +7,15 @@ routers de convocatorias, fuentes, stats y scraping (mismo prefijo /api/v1).
 from fastapi import APIRouter, FastAPI
 
 from app import __version__
-from app.api.routers import ai, convocatorias, fuentes, health, scraping, stats
+from app.api.routers import (
+    ai,
+    convocatorias,
+    fuentes,
+    gestion,
+    health,
+    scraping,
+    stats,
+)
 
 app = FastAPI(
     title="Convocatorias API",
@@ -19,6 +27,9 @@ app = FastAPI(
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
 api_router.include_router(convocatorias.router, prefix="/convocatorias")
+# Marcar/desmarcar cuelga de la convocatoria; el histórico, de /gestion.
+api_router.include_router(gestion.router_convocatorias, prefix="/convocatorias")
+api_router.include_router(gestion.router, prefix="/gestion")
 api_router.include_router(fuentes.router, prefix="/fuentes")
 api_router.include_router(stats.router, prefix="/stats")
 api_router.include_router(scraping.router, prefix="/scraping")

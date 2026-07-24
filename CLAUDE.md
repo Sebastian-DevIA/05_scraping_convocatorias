@@ -15,9 +15,10 @@ código, no documentación de proceso).
 Sistema que capta automáticamente **convocatorias reales y recientes**
 (licitaciones, fondos, subvenciones, RFP/EOI) desde fuentes oficiales, guarda sus
 **requisitos** y el **enlace a la publicación original** (`url_original`), y las
-expone en un **dashboard web** con buscador, filtros, **asistente de IA** y un
-filtro especial para **fundaciones nuevas/primerizas**. Todo corre con
-`docker compose`.
+expone en un **dashboard web** con buscador, filtros, **asistente de IA** (de
+USO, no técnico), un filtro especial para **fundaciones nuevas/primerizas** y un
+**histórico de gestión** que saca de la búsqueda aquello a lo que ya nos
+postulamos. Todo corre con `docker compose`.
 
 **Stack:** Python 3.12 · FastAPI · SQLAlchemy 2.0 (síncrono) · Pydantic v2 ·
 Alembic · httpx + tenacity (conectores) · APScheduler (worker) · PostgreSQL 16
@@ -31,7 +32,7 @@ Al arrancar, `api` aplica migraciones (`alembic upgrade head`) y **siembra las
 fuentes** (idempotente); `worker` corre el scheduler con una primera pasada
 inmediata.
 
-### Fuentes actuales (7)
+### Fuentes actuales (8)
 
 | `codigo` | Nombre | `tipo` | Estado |
 |---|---|---|---|
@@ -41,7 +42,17 @@ inmediata.
 | `mintic` | MinTIC Convocatorias | `html` | activa |
 | `worldbank` | Banco Mundial (World Bank Procurement Notices, API v2) | `api` | activa |
 | `grantsgov` | Grants.gov (EE. UU., subvenciones federales, API `search2` POST) | `api` | activa |
+| `sicon` | SICON — Cultura de Bogotá (SCRD, IDARTES, FUGA, IDPC; API JSON con token público) | `api` | activa |
 | `ungm` | UNGM (ONU) | `js` | **inactiva** (stub; la fuente carga por JS) |
+
+**Cobertura territorial (v1.4.0):** hay dos caminos. (1) SECOP II ya trae
+alcaldías y gobernaciones — el conector mapea `ordenentidad` → `ambito_fuente` y
+la app expone el filtro `ambito=territorial` + `ciudad`. (2) `sicon` es un
+conector nuevo para convocatorias del Distrito de Bogotá que NO pasan por SECOP
+(estímulos y becas de cultura). El token de SICON es público, rota solo y se
+obtiene en cada corrida (`cultured.gov.co/config/config.txt`); NO es un secreto
+nuestro, no va a `.env` ni al repo — si cambia el esquema, el conector falla con
+error tipado, no en silencio.
 
 ### Filtro `apto_fundaciones_nuevas`
 
@@ -85,13 +96,42 @@ badge en el frontend, y como clave interpretable por el asistente de IA.
 
 - Estado de convocatoria: `abierta | cerrada | adjudicada | vencida | desconocido`.
 - Tipo de convocatoria: `licitacion | subvencion | fondo | rfp | eoi | otro`.
+- Ámbito de convocatoria: `nacional | territorial | internacional | desconocido`
+  (`territorial` = alcaldías, gobernaciones, distritos y autoridades regionales).
 - Tipo de fuente: `api | html | js`.
 - Trigger de ejecución: `cron | manual`. Estado de ejecución:
   `en_curso | ok | parcial | error`.
+- Estado de gestión (histórico PROPIO, no viene de la fuente):
+  `en_seguimiento | postulada | descartada`. Flujo: `en_seguimiento` (marcada
+  para preparar/aprobar internamente, **sigue visible** en la búsqueda) →
+  `postulada` (ya se aplicó, **se oculta**) ; `descartada` (**se oculta**).
 
-Los conectores entregan `estado_fuente` **crudo** (texto libre de cada fuente); el
-pipeline (`normalizer.map_estado`) lo mapea al estado canónico. Los conectores NO
-mapean estado.
+Los conectores entregan `estado_fuente` y `ambito_fuente` **crudos** (texto libre
+de cada fuente); el pipeline (`normalizer.map_estado` / `normalizer.map_ambito`)
+los mapea al vocabulario canónico. Los conectores NO mapean. Cuando una fuente no
+reporta ámbito por registro, se usa el `ambito_default` declarado en su config
+(`scripts/seed_fuentes.py`) como respaldo.
+
+## Histórico de gestión (`gestiones`)
+
+Tabla **aparte** de `convocatorias` porque guarda datos NUESTROS, no de la
+fuente: a qué convocatorias nos postulamos con este software y cuáles
+descartamos. Va separada a propósito — el upsert del pipeline reescribe las
+columnas de `convocatorias` en cada scraping y borraría cualquier marca guardada
+ahí.
+
+- 0 o 1 registro por convocatoria (`convocatoria_id` UNIQUE, `ON DELETE CASCADE`).
+- Campos: `estado_gestion`, `responsable` (texto libre, sin login),
+  `fecha_postulacion` (UTC, solo en `postulada`), `notas`.
+- **`GET /convocatorias` oculta por defecto** las convocatorias `postulada` y
+  `descartada` (constante `ESTADOS_GESTION_OCULTAN` en `constants.py`). Las
+  `en_seguimiento` siguen visibles. Se recuperan todas con
+  `incluir_gestionadas=true` o filtrando por `estado_gestion`.
+- `GET /stats` expone `aplicadas` (postuladas) y `en_seguimiento` para el
+  dashboard. El dashboard **ya no** muestra tarjetas de convocatorias: la
+  selección de convocatorias vive solo en la vista Buscar.
+- Una instalación = una organización. La selección "Participar" del frontend es
+  otra cosa: temporal, en el navegador, solo para la exportación a Excel.
 
 ## Arquitectura de conectores (plugin)
 
@@ -119,7 +159,9 @@ mapean estado.
 - Toda migración de esquema va por Alembic. Nunca tocar el esquema sin migración.
   La migración y los modelos deben coincidir 1:1.
 - **Migraciones actuales:** `0001` esquema inicial; `0002` añade
-  `apto_fundaciones_nuevas` (+ índice).
+  `apto_fundaciones_nuevas` (+ índice); `0003` crea `gestiones` y añade
+  `convocatorias.ambito` (+ índices de `ambito` y `ciudad`); `0004` amplía el
+  CHECK de `gestiones.estado_gestion` con `en_seguimiento`.
 
 ## Cómo trabaja el equipo de agentes
 
@@ -225,7 +267,11 @@ docker compose down -v
 - `docs/api-contract.md` — contrato REST **congelado**; el frontend trabaja contra
   él.
 - `docs/ai-contract.md` — contrato de los endpoints de IA.
-- `docs/MANUAL_USUARIO.md` — lo lee la IA de soporte vía `settings.ai_manual_path`.
+- `docs/MANUAL_USUARIO.md` — manual del **cliente/usuario final**, no
+  documentación técnica. Lo lee la IA de soporte vía `settings.ai_manual_path` y
+  se le inyecta como ÚNICO contexto: **su contenido define el alcance del chat**.
+  Si le metes arquitectura, el asistente hablará de arquitectura. Lo técnico va
+  en este documento y en el `README.md`, nunca ahí.
 
 ## Solución de problemas
 
@@ -280,16 +326,55 @@ bien). Soluciones, en orden de preferencia:
 > escanear todo el repositorio. El usuario mantiene aquí las tareas y **las rutas
 > exactas** a modificar (ahorra tokens de contexto a los agentes).
 
-| Pendiente | Rutas afectadas | Prioridad | Notas |
-|---|---|---|---|
-| _(ejemplo)_ Añadir conector ReliefWeb | `app/connectors/reliefweb.py` + tests + fixtures + registrar en `scripts/seed_fuentes.py` | media | requiere `appname` aprobado de ReliefWeb; verificar la fuente en vivo |
-| _(ejemplo)_ Activar conector UNGM (hoy stub/JS) | `app/connectors/ungm.py` + tests + fixtures | baja | la fuente carga por JS; evaluar render headless antes |
-| _(añade aquí tus tareas reales)_ | | | |
+> Los puntos 1→8 de la **tanda UI v1.5** se completaron el 2026-07-24 (ver
+> [Historial](#historial-de-versiones)). Quedan pendientes solo las fuentes.
+
+| # | Pendiente | Rutas afectadas | Prioridad | Notas |
+|---|---|---|---|---|
+| — | Conectores territoriales pendientes (Medellín, Gob. Antioquia, Cali, Bucaramanga, IDPAC) | `app/connectors/<fuente>.py` + tests + fixtures + registrar en `seed_fuentes.py` | media | sondeados en v1.4.0 pero NO entregados: sus portales cargan por JS o no exponen un listado parseable estable. Requieren verificación en vivo y, en varios casos, render headless. `culturaenlineacali` (Cali) es SPA JS: sin endpoint JSON localizado. Entregar solo lo que se verifique con captura real. |
+| — | Activar conector UNGM (hoy stub/JS) | `app/connectors/ungm.py` + tests + fixtures | baja | la fuente carga por JS; evaluar render headless antes |
+| — | Optimizar el favicon/logo (945 KB) | `frontend/images/logo/` · `frontend/index.html` | baja | el PNG del logo se usa tal cual como favicon; conviene una versión pequeña (64×64) cuando haya herramientas de imagen. |
 
 ## Historial de versiones
 
 > Más reciente arriba. Cada entrada lleva **versión + fecha**.
 
+- **v1.5.0 — 2026-07-24**: **Identidad + UI cristalina.** (1) Marca **"Convoca"**:
+  logo en la pestaña del navegador (favicon) y en la barra de navegación, con
+  nombre de producto y tagline (`frontend/index.html`, `frontend/css/app.css`).
+  (2) **Rediseño glassmorphism**: superficies translúcidas con desenfoque
+  (`--glass-*` en `app.css`), fondo ambiental azul/verde, coherente en topbar,
+  tarjetas, diálogos, pestañas, panel de soporte y barra de selección; con
+  respaldos `@supports` y `prefers-reduced-transparency`. (3) Dashboard: KPIs de
+  gestión (`aplicadas`, `en_seguimiento`) y sin tarjetas de convocatorias
+  (validado en vivo). (4) Verificado que cada bot opera en su sección sin mezclar
+  tareas (`/ai/buscar` filtros, `/ai/soporte` uso, `/ai/{id}/resumen` resumen).
+  (5) Fix: la barra de selección (`.selection-bar`) no se ocultaba con 0
+  seleccionadas (`display:flex` anulaba `[hidden]`). Backend sin cambios: **104
+  tests** siguen en verde.
+- **v1.4.1 — 2026-07-24**: (1) **Dashboard depurado**: KPIs de gestión nuevos
+  —`aplicadas` (postuladas) y `en_seguimiento`— en `GET /stats`; se retiró del
+  dashboard la lista de tarjetas de convocatorias (la selección vive solo en
+  Buscar). (2) **Estado de gestión nuevo `en_seguimiento`** (migración `0004`):
+  marca de "en seguimiento / pendiente de aprobación interna" que, a diferencia
+  de `postulada`/`descartada`, **sigue visible** en la búsqueda hasta que se
+  aplica o descarta. Constante `ESTADOS_GESTION_OCULTAN` centraliza qué estados
+  ocultan. Verificado: **104 tests** en verde sobre Postgres real + smoke en vivo.
+- **v1.4.0 — 2026-07-23**: (1) **Asistente de chat acotado a USO**: el manual
+  (`docs/MANUAL_USUARIO.md`) se reescribió para el cliente final (sin
+  arquitectura ni infraestructura) y el prompt de soporte ahora rechaza
+  explícitamente cualquier pregunta técnica y remite al administrador. (2)
+  **Cobertura territorial**: SECOP mapea `ordenentidad` → `ambito` y
+  `fecha_de_recepcion_de` → `fecha_cierre`; nuevo vocabulario canónico `ambito`
+  (`map_ambito`); filtros nuevos `ambito` y `ciudad` en API / IA / frontend;
+  conector nuevo `sicon` (Cultura de Bogotá — SCRD/IDARTES/FUGA/IDPC — token
+  público, verificado en vivo: 190 convocatorias). (3) **Histórico de gestión**:
+  tabla nueva `gestiones` (migración `0003`), estados `postulada`/`descartada`
+  con `responsable`, endpoints `PUT`/`DELETE /convocatorias/{id}/gestion` y
+  `GET /gestion`, vista `#/historico`; `GET /convocatorias` **excluye por defecto
+  lo gestionado** (cambio de comportamiento NO aditivo). `HttpClient.post` gana
+  `data=`/`files=`. Verificado: **102 tests en verde** sobre Postgres real +
+  smoke en vivo del histórico y de SICON.
 - **v1.3.0 — 2026-07-23**: exportación a Excel (`POST /convocatorias/export`) de
   las convocatorias seleccionadas "para participar" (selección persistente +
   barra flotante + descarga `.xlsx` con `openpyxl`, incluye `url_original` para

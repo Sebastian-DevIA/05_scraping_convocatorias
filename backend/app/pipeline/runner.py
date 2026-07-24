@@ -45,8 +45,15 @@ def run(fuente: str | None = None, trigger: str = "manual") -> None:
                     if connector is None:
                         raise ConnectorError(f"No hay conector registrado para {fuente_db.codigo}")
                     raw_items = connector.fetch(fuente_db.config or {})
-                    keywords = (fuente_db.config or {}).get("keywords") or []
-                    items = [normalizar(raw, fuente_db.codigo, keywords) for raw in raw_items]
+                    config = fuente_db.config or {}
+                    keywords = config.get("keywords") or []
+                    # Ámbito declarado en la config de la fuente: solo respaldo
+                    # para los registros que no traen `ambito_fuente` propio.
+                    ambito_default = config.get("ambito_default")
+                    items = [
+                        normalizar(raw, fuente_db.codigo, keywords, ambito_default)
+                        for raw in raw_items
+                    ]
                     conteo = upsert_convocatorias(db, fuente_db.id, items)
                     ejecucion.items_obtenidos = len(raw_items)
                     ejecucion.items_nuevos = conteo.nuevos

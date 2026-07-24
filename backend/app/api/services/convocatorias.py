@@ -13,8 +13,10 @@ from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import ConvocatoriaFiltros, PaginacionParams
+from app.constants import ESTADOS_GESTION_OCULTAN
 from app.models.convocatoria import Convocatoria
 from app.models.fuente import Fuente
+from app.models.gestion import Gestion
 from app.schemas.convocatoria import (
     ConvocatoriaDetailResponse,
     ConvocatoriaPageResponse,
@@ -33,6 +35,19 @@ _ORDEN_COLUMNAS = {
 def _inicio_dia(dia: date) -> datetime:
     """Medianoche UTC del día dado (los timestamps de dominio son TIMESTAMPTZ)."""
     return datetime.combine(dia, time.min, tzinfo=timezone.utc)
+
+
+def _existe_gestion(*extra: ColumnElement[bool]) -> ColumnElement[bool]:
+    """EXISTS correlacionado contra `gestiones` (0 o 1 registro por convocatoria).
+
+    Se usa EXISTS / NOT EXISTS (no un LEFT JOIN con filtro) para que el conteo
+    de la paginación siga contando filas de `convocatorias`.
+    """
+    return (
+        select(Gestion.id)
+        .where(Gestion.convocatoria_id == Convocatoria.id, *extra)
+        .exists()
+    )
 
 
 def _construir_condiciones(f: ConvocatoriaFiltros) -> list[ColumnElement[bool]]:
@@ -55,9 +70,23 @@ def _construir_condiciones(f: ConvocatoriaFiltros) -> list[ColumnElement[bool]]:
         condiciones.append(Convocatoria.tipo == f.tipo)
     if f.departamento:
         condiciones.append(Convocatoria.departamento == f.departamento)
+    if f.ciudad:
+        condiciones.append(Convocatoria.ciudad == f.ciudad)
+    if f.ambito:
+        condiciones.append(Convocatoria.ambito == f.ambito)
     if f.apto_fundaciones_nuevas is not None:
         condiciones.append(
             Convocatoria.apto_fundaciones_nuevas.is_(f.apto_fundaciones_nuevas)
+        )
+
+    if f.estado_gestion:
+        # Filtro explícito por el histórico: implica incluir las gestionadas.
+        condiciones.append(_existe_gestion(Gestion.estado_gestion == f.estado_gestion))
+    elif not f.incluir_gestionadas:
+        # Default: se ocultan solo las `postulada`/`descartada` (para no repetir
+        # una postulación). Las `en_seguimiento` siguen visibles: aún no se aplicó.
+        condiciones.append(
+            ~_existe_gestion(Gestion.estado_gestion.in_(ESTADOS_GESTION_OCULTAN))
         )
 
     if f.fecha_publicacion_desde:
@@ -94,8 +123,12 @@ def _order_by(orden: str) -> list:
     return [principal, Convocatoria.id.desc()]
 
 
-def _a_response(c: Convocatoria) -> ConvocatoriaResponse:
-    """Modelo ORM (con `fuente` cargada) -> schema de listado."""
+def a_convocatoria_response(c: Convocatoria) -> ConvocatoriaResponse:
+    """Modelo ORM (con `fuente` y `gestion` cargadas) -> schema de listado.
+
+    Público porque el servicio de gestión embebe la convocatoria en su
+    histórico y debe producir exactamente la misma forma.
+    """
     return ConvocatoriaResponse(
         id=c.id,
         id_externo=c.id_externo,
@@ -113,12 +146,15 @@ def _a_response(c: Convocatoria) -> ConvocatoriaResponse:
         departamento=c.departamento,
         ciudad=c.ciudad,
         pais=c.pais,
+        ambito=c.ambito,
         fecha_publicacion=c.fecha_publicacion,
         fecha_apertura=c.fecha_apertura,
         fecha_cierre=c.fecha_cierre,
         url_original=c.url_original,
         keywords_match=list(c.keywords_match or []),
         apto_fundaciones_nuevas=c.apto_fundaciones_nuevas,
+        # None si nunca se marcó (dato NUESTRO, no de la fuente).
+        estado_gestion=c.gestion.estado_gestion if c.gestion else None,
         primera_vez_visto=c.primera_vez_visto,
         ultima_vez_visto=c.ultima_vez_visto,
         creado_en=c.creado_en,
@@ -128,7 +164,7 @@ def _a_response(c: Convocatoria) -> ConvocatoriaResponse:
 
 def _a_detail_response(c: Convocatoria, include_raw: bool) -> ConvocatoriaDetailResponse:
     """Añade `requisitos` y `raw` (solo si `include_raw`) al schema de detalle."""
-    base = _a_response(c)
+    base = a_convocatoria_response(c)
     return ConvocatoriaDetailResponse(
         **base.model_dump(),
         requisitos=c.requisitos,
@@ -149,7 +185,9 @@ def listar_convocatorias(
     filas = (
         db.execute(
             select(Convocatoria)
-            .options(joinedload(Convocatoria.fuente))
+            # `gestion` es 0..1 (UNIQUE) -> el joinedload no multiplica filas y
+            # el OFFSET/LIMIT sigue siendo por convocatoria.
+            .options(joinedload(Convocatoria.fuente), joinedload(Convocatoria.gestion))
             .where(*condiciones)
             .order_by(*_order_by(filtros.orden))
             .offset(paginacion.offset)
@@ -160,7 +198,7 @@ def listar_convocatorias(
     )
 
     return ConvocatoriaPageResponse(
-        items=[_a_response(c) for c in filas],
+        items=[a_convocatoria_response(c) for c in filas],
         total=total,
         page=paginacion.page,
         page_size=paginacion.page_size,
@@ -173,7 +211,7 @@ def obtener_convocatoria(
     """Detalle por id (con `requisitos`, y `raw` si `include_raw`). None si no existe."""
     convocatoria = db.execute(
         select(Convocatoria)
-        .options(joinedload(Convocatoria.fuente))
+        .options(joinedload(Convocatoria.fuente), joinedload(Convocatoria.gestion))
         .where(Convocatoria.id == convocatoria_id)
     ).scalar_one_or_none()
 
@@ -206,6 +244,14 @@ _COLUMNAS_EXPORT = [
     ("Apertura", 13, lambda c: _fecha_excel(c.fecha_apertura)),
     ("Cierre", 13, lambda c: _fecha_excel(c.fecha_cierre)),
     ("Apta fundaciones nuevas", 14, lambda c: "Sí" if c.apto_fundaciones_nuevas else "No"),
+    # Histórico propio (dato NUESTRO, vacío si la convocatoria no se ha gestionado).
+    ("Estado de gestión", 16, lambda c: c.gestion.estado_gestion if c.gestion else ""),
+    ("Responsable", 20, lambda c: (c.gestion.responsable or "") if c.gestion else ""),
+    (
+        "Fecha de postulación",
+        15,
+        lambda c: _fecha_excel(c.gestion.fecha_postulacion) if c.gestion else "",
+    ),
     ("Requisitos", 45, lambda c: c.requisitos or ""),
     ("Descripción", 60, lambda c: c.descripcion or ""),
     ("Palabras clave", 24, lambda c: ", ".join(c.keywords_match or [])),
@@ -228,7 +274,7 @@ def exportar_convocatorias_excel(db: Session, ids: list[int]) -> bytes:
     filas = (
         db.execute(
             select(Convocatoria)
-            .options(joinedload(Convocatoria.fuente))
+            .options(joinedload(Convocatoria.fuente), joinedload(Convocatoria.gestion))
             .where(Convocatoria.id.in_(ids))
             .order_by(
                 Convocatoria.fecha_cierre.asc().nulls_last(),

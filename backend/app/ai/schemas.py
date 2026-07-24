@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants import EstadoConvocatoria, TipoConvocatoria
+from app.constants import Ambito, EstadoConvocatoria, TipoConvocatoria
 from app.schemas.convocatoria import ConvocatoriaPageResponse
 
 # Límite de longitud de la pregunta del usuario (acota el prompt). Coincide con
@@ -31,6 +31,8 @@ class AIFiltrosExtraidos(BaseModel):
     estado: EstadoConvocatoria | None = None
     tipo: TipoConvocatoria | None = None
     departamento: str | None = None
+    ciudad: str | None = None
+    ambito: Ambito | None = None
     apto_fundaciones_nuevas: bool | None = None
     fecha_publicacion_desde: date | None = None
     fecha_publicacion_hasta: date | None = None

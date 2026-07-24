@@ -10,6 +10,9 @@ Características (comunes a todas las fuentes, para no duplicar en cada conector
 
 Los errores se traducen a las excepciones tipadas de `base.py`, para que los
 conectores nunca vean excepciones de httpx.
+
+`post()` admite `json=` (cuerpo JSON), `data=` (form urlencoded) y `files=`
+(multipart), porque no todas las fuentes aceptan JSON.
 """
 
 import time
@@ -80,15 +83,23 @@ class HttpClient:
         url: str,
         *,
         json: object | None = None,
+        data: dict | None = None,
+        files: dict | None = None,
         params: dict | None = None,
         headers: dict | None = None,
     ) -> httpx.Response:
         """POST con reintentos (para fuentes cuya API exige POST, ej. Grants.gov).
 
+        `json` para cuerpos JSON; `data` para `application/x-www-form-urlencoded`
+        y `files` para `multipart/form-data` (hay fuentes que solo aceptan
+        formulario y rechazan JSON, ej. SICON del Distrito de Bogotá).
+
         Mismo comportamiento que `get`: pausa/rate-limit, reintentos ante 429/5xx/red,
         y traducción a excepciones tipadas de `base.py`.
         """
-        return self._request("POST", url, params=params, headers=headers, json=json)
+        return self._request(
+            "POST", url, params=params, headers=headers, json=json, data=data, files=files
+        )
 
     def close(self) -> None:
         self._client.close()
@@ -108,6 +119,8 @@ class HttpClient:
         params: dict | None = None,
         headers: dict | None = None,
         json: object | None = None,
+        data: dict | None = None,
+        files: dict | None = None,
     ) -> httpx.Response:
         retryer = Retrying(
             stop=stop_after_attempt(self._max_attempts),
@@ -115,7 +128,7 @@ class HttpClient:
             retry=retry_if_exception_type(_RETRYABLE),
             reraise=True,
         )
-        return retryer(self._do_request, method, url, params, headers, json)
+        return retryer(self._do_request, method, url, params, headers, json, data, files)
 
     def _do_request(
         self,
@@ -124,6 +137,8 @@ class HttpClient:
         params: dict | None,
         headers: dict | None,
         json: object | None = None,
+        data: dict | None = None,
+        files: dict | None = None,
     ) -> httpx.Response:
         # Pausa ANTES de cada intento (incluye reintentos) -> throttling.
         if self._pause > 0:
@@ -131,7 +146,7 @@ class HttpClient:
 
         try:
             response = self._client.request(
-                method, url, params=params, headers=headers, json=json
+                method, url, params=params, headers=headers, json=json, data=data, files=files
             )
         except httpx.TimeoutException as exc:  # transitorio -> reintento
             raise SourceUnavailableError(f"timeout en {url}: {exc}") from exc

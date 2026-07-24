@@ -77,6 +77,15 @@ class RawConvocatoria(BaseModel):
         default=PAIS_DEFAULT,
         description="País de la convocatoria. Default 'Colombia'.",
     )
+    ambito_fuente: str | None = Field(
+        default=None,
+        description=(
+            "Ámbito de la entidad convocante tal cual lo reporta la fuente "
+            "(texto libre, ej. el `ordenentidad` de SECOP: 'Territorial', "
+            "'Nacional'). El pipeline lo mapea al ámbito canónico. None si la "
+            "fuente no lo expone."
+        ),
+    )
     fecha_publicacion: datetime | None = Field(
         default=None,
         description="Fecha de publicación (datetime en UTC). None si imparseable/ausente.",

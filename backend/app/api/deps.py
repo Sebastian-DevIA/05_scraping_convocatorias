@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from fastapi import Query
 
-from app.constants import EstadoConvocatoria, TipoConvocatoria
+from app.constants import Ambito, EstadoConvocatoria, EstadoGestion, TipoConvocatoria
 from app.database import get_db  # re-export
 
 __all__ = [
@@ -72,6 +72,15 @@ class ConvocatoriaFiltros:
     estado: EstadoConvocatoria | None = Query(None, description="Estado canónico.")
     tipo: TipoConvocatoria | None = Query(None, description="Tipo canónico.")
     departamento: str | None = Query(None, description="Departamento exacto.")
+    ciudad: str | None = Query(None, description="Ciudad exacta.")
+    ambito: Ambito | None = Query(
+        None,
+        description=(
+            "Ámbito de la entidad convocante: nacional | territorial | "
+            "internacional | desconocido. 'territorial' = alcaldías, "
+            "gobernaciones, distritos y autoridades regionales."
+        ),
+    )
     apto_fundaciones_nuevas: bool | None = Query(
         None,
         description=(
@@ -92,6 +101,24 @@ class ConvocatoriaFiltros:
     )
     fecha_cierre_hasta: date | None = Query(
         None, description="Límite superior de fecha_cierre (YYYY-MM-DD, día incluido)."
+    )
+
+    # --- Histórico propio de gestión (tabla `gestiones`) --------------------
+    # Por defecto la búsqueda muestra SOLO lo pendiente: las convocatorias ya
+    # marcadas (postuladas o descartadas) quedan fuera del listado.
+    estado_gestion: EstadoGestion | None = Query(
+        None,
+        description=(
+            "Filtra por el histórico propio: 'postulada' o 'descartada'. "
+            "Indicarlo implica incluir las gestionadas."
+        ),
+    )
+    incluir_gestionadas: bool = Query(
+        False,
+        description=(
+            "Si es true, el listado incluye también las convocatorias con "
+            "registro de gestión (por defecto se excluyen)."
+        ),
     )
 
     monto_min: Decimal | None = Query(None, description="Monto mínimo (inclusive).")

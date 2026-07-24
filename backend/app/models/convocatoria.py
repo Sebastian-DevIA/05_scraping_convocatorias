@@ -20,7 +20,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.constants import ESTADOS_CONVOCATORIA, PAIS_DEFAULT, TIPOS_CONVOCATORIA
+from app.constants import (
+    AMBITOS,
+    ESTADOS_CONVOCATORIA,
+    PAIS_DEFAULT,
+    TIPOS_CONVOCATORIA,
+)
 from app.database import Base
 
 # Expresión del tsvector generado (config 'spanish' sobre titulo + descripcion).
@@ -42,7 +47,13 @@ class Convocatoria(Base):
             "tipo IN ('licitacion', 'subvencion', 'fondo', 'rfp', 'eoi', 'otro')",
             name="ck_convocatorias_tipo",
         ),
+        CheckConstraint(
+            "ambito IN ('nacional', 'territorial', 'internacional', 'desconocido')",
+            name="ck_convocatorias_ambito",
+        ),
         Index("ix_convocatorias_estado", "estado"),
+        Index("ix_convocatorias_ambito", "ambito"),
+        Index("ix_convocatorias_ciudad", "ciudad"),
         Index("ix_convocatorias_fecha_cierre", "fecha_cierre"),
         Index("ix_convocatorias_fecha_publicacion", text("fecha_publicacion DESC")),
         Index("ix_convocatorias_departamento", "departamento"),
@@ -83,6 +94,13 @@ class Convocatoria(Base):
     ciudad: Mapped[str | None] = mapped_column(String(120), nullable=True)
     pais: Mapped[str] = mapped_column(
         String(120), nullable=False, default=PAIS_DEFAULT, server_default=PAIS_DEFAULT
+    )
+
+    # Ámbito canónico de la entidad convocante: nacional|territorial|
+    # internacional|desconocido. Lo mapea el pipeline desde `ambito_fuente`
+    # (texto crudo de la fuente). `territorial` = alcaldías y gobernaciones.
+    ambito: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="desconocido", server_default="desconocido"
     )
 
     # Timestamps de dominio en UTC (TIMESTAMPTZ). Imparseable -> NULL, nunca inventar.
@@ -134,10 +152,18 @@ class Convocatoria(Base):
     )
 
     fuente: Mapped["Fuente"] = relationship(back_populates="convocatorias")  # noqa: F821
+    # Registro propio de gestión (a qué nos postulamos). 0 o 1 por convocatoria.
+    gestion: Mapped["Gestion | None"] = relationship(  # noqa: F821
+        back_populates="convocatoria",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     # Referencias estáticas para documentación / validación externa.
     ESTADOS = ESTADOS_CONVOCATORIA
     TIPOS = TIPOS_CONVOCATORIA
+    AMBITOS = AMBITOS
 
     def __repr__(self) -> str:  # pragma: no cover - ayuda de depuración
         return f"<Convocatoria {self.id_externo} estado={self.estado}>"

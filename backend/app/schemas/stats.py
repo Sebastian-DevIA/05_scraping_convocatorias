@@ -26,6 +26,18 @@ class StatsResponse(BaseModel):
     nuevas_7d: int = Field(description="Nuevas en los últimos 7 días (primera_vez_visto).")
     cierran_7d: int = Field(description="Abiertas cuyo cierre ocurre en los próximos 7 días.")
 
+    # Gestión propia (histórico): NO son datos de la fuente.
+    aplicadas: int = Field(
+        default=0, description="Convocatorias marcadas como 'postulada' (ya se aplicó)."
+    )
+    en_seguimiento: int = Field(
+        default=0,
+        description=(
+            "Convocatorias 'en_seguimiento' (marcadas para preparar/aprobar "
+            "internamente, aún sin aplicar)."
+        ),
+    )
+
     por_fuente: list[ConteoPorFuente] = Field(default_factory=list)
     por_estado: list[Conteo] = Field(default_factory=list)
     por_departamento: list[Conteo] = Field(default_factory=list)

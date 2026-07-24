@@ -38,6 +38,8 @@ _CAMPOS_FILTRO = (
     "estado",
     "tipo",
     "departamento",
+    "ciudad",
+    "ambito",
     "apto_fundaciones_nuevas",
     "fecha_publicacion_desde",
     "fecha_publicacion_hasta",
@@ -48,6 +50,15 @@ _CAMPOS_FILTRO = (
 )
 
 
+# Campos de filtro que la IA no interpreta pero que el dataclass exige fijar
+# (sus defaults son objetos `Query`). La búsqueda con IA se comporta como la
+# búsqueda normal: sin filtro de histórico y sin las convocatorias gestionadas.
+_CAMPOS_FIJOS = {
+    "estado_gestion": None,
+    "incluir_gestionadas": False,
+}
+
+
 def _filtros(**valores) -> ConvocatoriaFiltros:
     """Construye ConvocatoriaFiltros con TODOS los campos explícitos.
 
@@ -55,6 +66,7 @@ def _filtros(**valores) -> ConvocatoriaFiltros:
     FastAPI); instanciarlo a mano exige fijar cada campo a un valor real.
     """
     base = {campo: valores.get(campo) for campo in _CAMPOS_FILTRO}
+    base.update(_CAMPOS_FIJOS)
     base["orden"] = valores.get("orden", ORDEN_DEFAULT)
     return ConvocatoriaFiltros(**base)
 
@@ -111,6 +123,8 @@ def buscar(db: Session, pregunta: str) -> AIBusquedaResponse:
         estado=filtros_dict.get("estado"),
         tipo=filtros_dict.get("tipo"),
         departamento=filtros_dict.get("departamento"),
+        ciudad=filtros_dict.get("ciudad"),
+        ambito=filtros_dict.get("ambito"),
         apto_fundaciones_nuevas=filtros_dict.get("apto_fundaciones_nuevas"),
         fecha_publicacion_desde=filtros_dict.get("fecha_publicacion_desde"),
         fecha_publicacion_hasta=filtros_dict.get("fecha_publicacion_hasta"),

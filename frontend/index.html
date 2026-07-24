@@ -3,22 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Convocatorias · Búsqueda operativa</title>
+    <title>Convoca · Radar de convocatorias y fondos</title>
     <meta
       name="description"
-      content="Búsqueda de convocatorias, fondos y licitaciones reales scrapeadas de fuentes oficiales."
+      content="Convoca — radar de convocatorias, fondos y licitaciones reales de fuentes oficiales, con asistente de IA e histórico de gestión."
     />
+    <meta name="theme-color" content="#0b5cab" />
+    <link rel="icon" type="image/png" href="/images/logo/logo_scalping_fundacion.png" />
+    <link rel="apple-touch-icon" href="/images/logo/logo_scalping_fundacion.png" />
     <link rel="stylesheet" href="/css/app.css" />
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">
-        <h1>Convocatorias</h1>
-        <p>Búsqueda operativa de propuestas, fondos y licitaciones reales</p>
-      </div>
+      <a class="brand" href="#/dashboard" aria-label="Convoca — ir al panel">
+        <img class="brand-logo" src="/images/logo/logo_scalping_fundacion.png"
+             alt="" width="44" height="44" decoding="async" />
+        <span class="brand-text">
+          <span class="brand-name">Convoca</span>
+          <span class="brand-tagline">Radar de convocatorias, fondos y licitaciones</span>
+        </span>
+      </a>
       <nav aria-label="Secciones">
         <a href="#/dashboard" data-nav="dashboard">Dashboard</a>
         <a href="#/convocatorias" data-nav="convocatorias">Buscar</a>
+        <a href="#/historico" data-nav="historico">Histórico</a>
         <a href="#/asistente" data-nav="asistente">Asistente IA</a>
         <a href="#/fuentes" data-nav="fuentes">Fuentes</a>
       </nav>
@@ -48,6 +56,37 @@
         <button id="closeDialog" aria-label="Cerrar detalle">×</button>
       </div>
       <div id="detailBody"></div>
+    </dialog>
+
+    <!-- Modal propio para registrar la gestión (postulada / descartada). -->
+    <dialog id="gestionDialog" aria-labelledby="gestionTitle">
+      <div class="dialog-head">
+        <h2 id="gestionTitle">Marcar convocatoria</h2>
+        <button type="button" id="gestionClose" aria-label="Cerrar formulario">×</button>
+      </div>
+      <form id="gestionForm" class="gestion-form" novalidate>
+        <p id="gestionIntro" class="muted small"></p>
+        <p id="gestionConv" class="gestion-conv"></p>
+        <label for="gestionResponsable">
+          Responsable <span class="req" aria-hidden="true">*</span>
+          <input id="gestionResponsable" name="responsable" maxlength="120" required
+                 placeholder="Nombre de quien responde por este registro" autocomplete="off" />
+        </label>
+        <label for="gestionFecha">
+          Fecha de postulación
+          <input type="date" id="gestionFecha" name="fecha_postulacion" />
+        </label>
+        <label for="gestionNotas">
+          Notas (opcional)
+          <textarea id="gestionNotas" name="notas" rows="3" maxlength="1000"
+                    placeholder="Ej. se envió la propuesta por el portal; pendiente acta de junta."></textarea>
+        </label>
+        <p id="gestionError" class="err-msg" role="alert" hidden></p>
+        <div class="gestion-actions">
+          <button type="button" id="gestionCancel">Cancelar</button>
+          <button type="submit" id="gestionSubmit" class="primary">Confirmar</button>
+        </div>
+      </form>
     </dialog>
 
     <!-- Widget flotante de soporte con IA (ayuda de uso, basado en el manual) -->

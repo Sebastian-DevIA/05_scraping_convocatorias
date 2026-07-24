@@ -51,6 +51,31 @@ def map_estado(estado_fuente: str) -> str:
     return "desconocido"
 
 
+def map_ambito(ambito_fuente: str | None) -> str:
+    """Mapea el `ambito_fuente` crudo al ámbito canónico.
+
+    Trabaja sobre texto libre de cada fuente (ej. el `ordenentidad` de SECOP II,
+    cuyos valores reales son 'Territorial', 'Nacional', 'Corporación Autónoma' y
+    'No Definido'). Las Corporaciones Autónomas Regionales son autoridades de
+    alcance regional, por eso caen en `territorial`.
+
+    Sin señal reconocible -> 'desconocido' (nunca se adivina).
+    """
+    if not ambito_fuente:
+        return "desconocido"
+    texto = fold_text(ambito_fuente)
+    if any(
+        x in texto
+        for x in ("territorial", "municipal", "departamental", "distrital", "corporacion autonoma", "regional")
+    ):
+        return "territorial"
+    if any(x in texto for x in ("internacional", "international", "multilateral")):
+        return "internacional"
+    if any(x in texto for x in ("nacional", "national", "federal")):
+        return "nacional"
+    return "desconocido"
+
+
 def es_apto_fundaciones_nuevas(raw: RawConvocatoria) -> bool:
     """Flag DERIVADO: ¿la convocatoria parece accesible a fundaciones nuevas?
 
@@ -80,8 +105,18 @@ def keywords_match(raw: RawConvocatoria, keywords: list[str]) -> list[str]:
     return matches
 
 
-def normalizar(raw: RawConvocatoria, codigo_fuente: str, keywords: list[str]) -> dict[str, Any]:
-    """Convierte una convocatoria cruda en dict listo para upsert."""
+def normalizar(
+    raw: RawConvocatoria,
+    codigo_fuente: str,
+    keywords: list[str],
+    ambito_default: str | None = None,
+) -> dict[str, Any]:
+    """Convierte una convocatoria cruda en dict listo para upsert.
+
+    `ambito_default` es el ámbito declarado en la config de la fuente (ej.
+    'Internacional' para PNUD o Banco Mundial); solo se usa como respaldo cuando
+    el registro no trae `ambito_fuente` propio.
+    """
     data = {
         "id_externo": raw.id_externo,
         "titulo": raw.titulo,
@@ -95,6 +130,7 @@ def normalizar(raw: RawConvocatoria, codigo_fuente: str, keywords: list[str]) ->
         "departamento": clean_text(raw.departamento),
         "ciudad": clean_text(raw.ciudad),
         "pais": clean_text(raw.pais) or PAIS_DEFAULT,
+        "ambito": map_ambito(raw.ambito_fuente or ambito_default),
         "fecha_publicacion": _utc(raw.fecha_publicacion),
         "fecha_apertura": _utc(raw.fecha_apertura),
         "fecha_cierre": _utc(raw.fecha_cierre),
@@ -118,6 +154,7 @@ def normalizar(raw: RawConvocatoria, codigo_fuente: str, keywords: list[str]) ->
             "departamento",
             "ciudad",
             "pais",
+            "ambito",
             "fecha_publicacion",
             "fecha_apertura",
             "fecha_cierre",

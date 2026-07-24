@@ -41,9 +41,30 @@ TIPOS_CONVOCATORIA: tuple[str, ...] = (
     "otro",
 )
 
+# --- Convocatoria: ámbito de la entidad convocante -------------------------
+# El pipeline mapea el `ambito_fuente` (texto libre de cada fuente, ej. el
+# `ordenentidad` de SECOP II) a uno de estos. `territorial` = alcaldías,
+# gobernaciones, distritos y entes descentralizados del orden territorial.
+Ambito = Literal["nacional", "territorial", "internacional", "desconocido"]
+AMBITOS: tuple[str, ...] = ("nacional", "territorial", "internacional", "desconocido")
+
 # --- Fuente: tipo de acceso ------------------------------------------------
 TipoFuente = Literal["api", "html", "js"]
 TIPOS_FUENTE: tuple[str, ...] = ("api", "html", "js")
+
+# --- Gestión: histórico propio de postulaciones ----------------------------
+# NO es un dato de la fuente: lo registra el usuario de esta instalación para
+# llevar control del ciclo de vida de cada convocatoria. Ver app.models.gestion.
+# Flujo: `en_seguimiento` (marcada para preparar/aprobar internamente, ANTES de
+# aplicar) -> `postulada` (ya se aplicó) ; `descartada` (no se participará).
+# `en_seguimiento` SIGUE visible en la búsqueda; `postulada`/`descartada` NO
+# (para no repetir una postulación).
+EstadoGestion = Literal["en_seguimiento", "postulada", "descartada"]
+ESTADOS_GESTION: tuple[str, ...] = ("en_seguimiento", "postulada", "descartada")
+
+# Estados de gestión que OCULTAN la convocatoria del listado de búsqueda por
+# defecto. `en_seguimiento` no está: sigue visible porque aún no se aplicó.
+ESTADOS_GESTION_OCULTAN: tuple[str, ...] = ("postulada", "descartada")
 
 # --- Ejecucion: trigger y estado ------------------------------------------
 TriggerEjecucion = Literal["cron", "manual"]

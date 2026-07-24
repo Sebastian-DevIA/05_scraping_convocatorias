@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants import EstadoConvocatoria, TipoConvocatoria
+from app.constants import Ambito, EstadoConvocatoria, EstadoGestion, TipoConvocatoria
 
 
 class ConvocatoriaResponse(BaseModel):
@@ -39,6 +39,14 @@ class ConvocatoriaResponse(BaseModel):
     departamento: str | None = None
     ciudad: str | None = None
     pais: str
+    ambito: Ambito = Field(
+        default="desconocido",
+        description=(
+            "Ámbito de la entidad convocante: nacional | territorial | "
+            "internacional | desconocido. 'territorial' agrupa alcaldías, "
+            "gobernaciones, distritos y autoridades regionales."
+        ),
+    )
 
     fecha_publicacion: datetime | None = None
     fecha_apertura: datetime | None = None
@@ -53,6 +61,15 @@ class ConvocatoriaResponse(BaseModel):
             "primerizas. True = se hallaron señales de apertura a nuevas "
             "organizaciones sin exigencia de trayectoria. False = sin evidencia "
             "(no afirma 'no apto'). Verificar siempre en la publicación oficial."
+        ),
+    )
+
+    estado_gestion: EstadoGestion | None = Field(
+        default=None,
+        description=(
+            "Estado del histórico propio de gestión: 'postulada' (ya nos "
+            "postulamos), 'descartada', o null si no se ha gestionado. Las "
+            "gestionadas se excluyen del listado salvo `incluir_gestionadas=true`."
         ),
     )
 

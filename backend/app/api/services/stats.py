@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models.convocatoria import Convocatoria
 from app.models.fuente import Fuente
+from app.models.gestion import Gestion
 from app.schemas.stats import Conteo, ConteoPorFuente, StatsResponse
 
 
@@ -46,6 +47,18 @@ def obtener_stats(db: Session) -> StatsResponse:
         )
     ).scalar_one()
 
+    # Gestión propia (histórico): a qué nos postulamos y qué seguimos.
+    aplicadas = db.execute(
+        select(func.count())
+        .select_from(Gestion)
+        .where(Gestion.estado_gestion == "postulada")
+    ).scalar_one()
+    en_seguimiento = db.execute(
+        select(func.count())
+        .select_from(Gestion)
+        .where(Gestion.estado_gestion == "en_seguimiento")
+    ).scalar_one()
+
     total_fuente = func.count(Convocatoria.id).label("total")
     por_fuente = db.execute(
         select(Fuente.codigo, Fuente.nombre, total_fuente)
@@ -74,6 +87,8 @@ def obtener_stats(db: Session) -> StatsResponse:
         abiertas=abiertas,
         nuevas_7d=nuevas_7d,
         cierran_7d=cierran_7d,
+        aplicadas=aplicadas,
+        en_seguimiento=en_seguimiento,
         por_fuente=[
             ConteoPorFuente(codigo=codigo, nombre=nombre, total=t)
             for codigo, nombre, t in por_fuente

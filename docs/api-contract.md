@@ -4,6 +4,12 @@ Este documento es la **fuente de verdad** de la API. El frontend (agente F) trab
 SOLO contra este contrato. El agente E (API) implementa exactamente estas formas.
 Si algo debe cambiar, se cambia aquí primero y se avisa.
 
+> **Ampliado en v1.4.0 (2026-07-23)**: filtros `ciudad` y `ambito`, campos
+> `ambito` y `estado_gestion` en `ConvocatoriaResponse`, y los endpoints del
+> [histórico de gestión](#histórico-de-gestión). Incluye un **cambio de
+> comportamiento no aditivo** en `GET /convocatorias` (ver el aviso en esa
+> sección).
+
 ## Convenciones globales
 
 - **Prefijo**: todas las rutas cuelgan de `/api/v1`.
@@ -18,9 +24,11 @@ Si algo debe cambiar, se cambia aquí primero y se avisa.
 - **Enums canónicos**:
   - `estado` de convocatoria: `abierta | cerrada | adjudicada | vencida | desconocido`.
   - `tipo` de convocatoria: `licitacion | subvencion | fondo | rfp | eoi | otro`.
+  - `ambito` de convocatoria: `nacional | territorial | internacional | desconocido`.
   - `tipo` de fuente: `api | html | js`.
   - `trigger` de ejecución: `cron | manual`.
   - `estado` de ejecución: `en_curso | ok | parcial | error`.
+  - `estado_gestion` (histórico propio): `en_seguimiento | postulada | descartada`.
 
 > Todos los cuerpos JSON de abajo son **ejemplos de documentación** (valores ilustrativos),
 > no datos reales almacenados.
@@ -58,7 +66,11 @@ Listado paginado con filtros.
 | `estado` | string | Estado canónico. |
 | `tipo` | string | Tipo canónico. |
 | `departamento` | string | Departamento exacto. |
+| `ciudad` | string | Ciudad/municipio exacto. |
+| `ambito` | string | Ámbito de la entidad convocante: `nacional`, `territorial`, `internacional`, `desconocido`. `territorial` agrupa alcaldías, gobernaciones, distritos y autoridades regionales. |
 | `apto_fundaciones_nuevas` | bool | Filtra por el flag derivado de aptitud para fundaciones nuevas/primerizas. `true` = solo las marcadas como aptas; `false` = solo las no marcadas; omitir = sin filtro. |
+| `estado_gestion` | string | Filtra por el histórico propio de gestión: `en_seguimiento`, `postulada` o `descartada`. Indicarlo implica incluir las gestionadas. |
+| `incluir_gestionadas` | bool | Default `false`. Ver la nota de comportamiento más abajo. |
 | `fecha_publicacion_desde` | date (`YYYY-MM-DD`) | Límite inferior de `fecha_publicacion`. |
 | `fecha_publicacion_hasta` | date | Límite superior de `fecha_publicacion`. |
 | `fecha_cierre_desde` | date | Límite inferior de `fecha_cierre`. |
@@ -90,12 +102,14 @@ Listado paginado con filtros.
       "departamento": "Antioquia",
       "ciudad": "Medellín",
       "pais": "Colombia",
+      "ambito": "territorial",
       "fecha_publicacion": "2026-07-10T05:00:00+00:00",
       "fecha_apertura": "2026-07-12T05:00:00+00:00",
       "fecha_cierre": "2026-07-28T05:00:00+00:00",
       "url_original": "https://community.secop.gov.co/Public/Tendering/...",
       "keywords_match": ["inclusión digital", "población vulnerable", "tecnología"],
       "apto_fundaciones_nuevas": false,
+      "estado_gestion": null,
       "primera_vez_visto": "2026-07-11T06:00:00+00:00",
       "ultima_vez_visto": "2026-07-21T06:00:00+00:00",
       "creado_en": "2026-07-11T06:00:00+00:00",
@@ -114,8 +128,22 @@ Listado paginado con filtros.
   primerizas y ninguna señal descalificante (exigencia de trayectoria). `false` =
   sin evidencia (**no** afirma "no apto"). Puede tener falsos positivos/negativos:
   verificar siempre en la publicación oficial. No es un dato de la fuente.
+- `ambito` (string): ámbito **canónico** de la entidad convocante, mapeado por el
+  pipeline desde el texto crudo de la fuente (ej. el `ordenentidad` de SECOP II).
+  Valores: `nacional`, `territorial`, `internacional`, `desconocido`. Sin señal
+  reconocible queda `desconocido` (no se adivina).
+- `estado_gestion` (`"en_seguimiento" | "postulada" | "descartada" | null`): estado del **histórico
+  propio de gestión**. No es un dato de la fuente: lo registra el usuario de esta
+  instalación. `null` = sin gestionar.
 - Códigos de `fuente` disponibles: `secop`, `pnud`, `minciencias`, `mintic`,
   `worldbank`, `grantsgov` (activas) y `ungm` (stub, inactiva).
+
+> **⚠ Cambio de comportamiento (v1.4.0, NO aditivo).** Por defecto este listado
+> **excluye** las convocatorias marcadas como `postulada` o `descartada`, para
+> que no se repita una postulación. Las marcadas como `en_seguimiento` **siguen
+> apareciendo** (aún no se ha aplicado). Para ver también las postuladas/
+> descartadas pasa `incluir_gestionadas=true`, o filtra explícitamente con
+> `estado_gestion`.
 
 ---
 
@@ -166,12 +194,102 @@ Cuerpo binario: un archivo `.xlsx`.
 - `Content-Type`: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
 - `Content-Disposition`: `attachment; filename="convocatorias_seleccionadas.xlsx"`.
 - Columnas: Título, Entidad emisora, Fuente, Estado, Tipo, Modalidad, País,
-  Departamento, Ciudad, Monto, Moneda, Publicación, Apertura, Cierre, Apta
-  fundaciones nuevas, Requisitos, Descripción, Palabras clave, URL original
-  (verificar), ID externo. Ordenado por fecha de cierre (próximas primero).
+  Departamento, Ciudad, Ámbito, Monto, Moneda, Publicación, Apertura, Cierre,
+  Apta fundaciones nuevas, Gestión, Responsable, Fecha de postulación,
+  Requisitos, Descripción, Palabras clave, URL original (verificar), ID externo.
+  Ordenado por fecha de cierre (próximas primero).
 
 ### 422 Unprocessable Entity
 Si `ids` está vacío o supera 1000 elementos.
+
+---
+
+## Histórico de gestión
+
+Registro **propio** de a qué convocatorias nos postulamos con este software y
+cuáles descartamos. No es un dato de las fuentes. Una instalación = una
+organización (sin login); `responsable` es texto libre para saber quién del
+equipo hizo la marca. Marcar una convocatoria la **saca de la búsqueda**.
+
+### `PUT /api/v1/convocatorias/{id}/gestion`
+
+Crea o actualiza la marca de una convocatoria (upsert; 0 o 1 marca por
+convocatoria).
+
+#### Request body — `GestionRequest`
+```json
+{
+  "estado_gestion": "postulada",
+  "responsable": "Sebastián",
+  "fecha_postulacion": "2026-07-23T14:30:00+00:00",
+  "notas": "Enviada con la propuesta de inclusión digital."
+}
+```
+- `estado_gestion` (**obligatorio**): `en_seguimiento` | `postulada` | `descartada`.
+- `responsable`: `string | null` (máx. 120).
+- `fecha_postulacion`: `datetime | null`. Solo aplica a `postulada`; si se omite
+  se usa el momento actual (UTC). En `descartada` se ignora y queda `null`.
+- `notas`: `string | null`.
+
+#### 200 OK — `GestionResponse`
+```json
+{
+  "id": 7,
+  "convocatoria_id": 1284,
+  "estado_gestion": "postulada",
+  "responsable": "Sebastián",
+  "fecha_postulacion": "2026-07-23T14:30:00+00:00",
+  "notas": "Enviada con la propuesta de inclusión digital.",
+  "creado_en": "2026-07-23T14:30:02+00:00",
+  "actualizado_en": "2026-07-23T14:30:02+00:00"
+}
+```
+
+#### 404 Not Found
+```json
+{ "detail": "Convocatoria no encontrada" }
+```
+
+### `DELETE /api/v1/convocatorias/{id}/gestion`
+
+Deshace la marca: la convocatoria vuelve a aparecer en la búsqueda.
+
+- **204 No Content** si se eliminó.
+- **404 Not Found** si la convocatoria no tenía marca.
+
+### `GET /api/v1/gestion`
+
+El histórico, paginado.
+
+#### Query params (todos opcionales)
+| Param | Tipo | Descripción |
+|---|---|---|
+| `estado_gestion` | string | `en_seguimiento`, `postulada` o `descartada`. Omitir = todas. |
+| `responsable` | string | Filtra por responsable exacto. |
+| `page` | int ≥ 1 | Página (base 1). Default 1. |
+| `page_size` | int 1..100 | Tamaño de página. Default 20. |
+
+#### 200 OK — `GestionPageResponse`
+```json
+{
+  "items": [
+    {
+      "id": 7,
+      "convocatoria_id": 1284,
+      "estado_gestion": "postulada",
+      "responsable": "Sebastián",
+      "fecha_postulacion": "2026-07-23T14:30:00+00:00",
+      "notas": "Enviada con la propuesta de inclusión digital.",
+      "creado_en": "2026-07-23T14:30:02+00:00",
+      "actualizado_en": "2026-07-23T14:30:02+00:00",
+      "convocatoria": { "...": "(ConvocatoriaResponse completa)" }
+    }
+  ],
+  "total": 12,
+  "page": 1,
+  "page_size": 20
+}
+```
 
 ---
 
@@ -186,6 +304,8 @@ Métricas agregadas para el dashboard. No paginado.
   "abiertas": 58,
   "nuevas_7d": 12,
   "cierran_7d": 9,
+  "aplicadas": 7,
+  "en_seguimiento": 4,
   "por_fuente": [
     { "codigo": "secop", "nombre": "SECOP II (Colombia Compra Eficiente)", "total": 110 },
     { "codigo": "pnud", "nombre": "PNUD - Procurement Notices", "total": 15 }
@@ -203,6 +323,10 @@ Métricas agregadas para el dashboard. No paginado.
 ```
 - `nuevas_7d`: convocatorias con `primera_vez_visto` en los últimos 7 días.
 - `cierran_7d`: convocatorias `abierta` cuyo `fecha_cierre` cae en los próximos 7 días.
+- `aplicadas`: convocatorias del histórico marcadas como `postulada` (ya se aplicó).
+- `en_seguimiento`: convocatorias marcadas como `en_seguimiento` (en preparación /
+  pendiente de aprobación interna, aún sin aplicar). Ambos son datos **propios**
+  de gestión, no de las fuentes.
 
 ---
 

@@ -4,13 +4,15 @@ u OpenRouter estén disponibles (importante para CI).
 Cubren: extracción de filtros válida, JSON inválido -> fallback de texto plano,
 enum inválido -> fallback, proveedor caído -> ia_disponible=false sin romper el
 endpoint, 404 de resumen, degradación de resumen/soporte, límite de longitud
-(422) y rate-limit (429).
+(422), rate-limit (429) y el acotamiento de los prompts (soporte = uso de la
+herramienta, nunca infraestructura; extracción = claves ciudad/ambito).
 """
 
 from types import SimpleNamespace
 
 import pytest
 
+from app.ai import prompts
 from app.ai.errors import AIUnavailableError
 from app.api.routers import ai as ai_router
 from app.api.services import ai as ai_service
@@ -75,6 +77,45 @@ def test_buscar_proveedor_caido_no_rompe(client, monkeypatch):
     assert body["ia_disponible"] is False
     assert body["fallback"] is True
     assert body["filtros_interpretados"] == {"q": "inclusion digital"}
+
+
+def test_buscar_propaga_ciudad_y_ambito(client, monkeypatch):
+    """Los filtros territoriales que interpreta la IA llegan al listado real."""
+    _patch_complete(
+        monkeypatch,
+        lambda system, prompt: '{"ciudad": "Medellín", "ambito": "territorial"}',
+    )
+    capturado = {}
+    listar_real = ai_service.conv_service.listar_convocatorias
+
+    def _espia(db, filtros, paginacion):
+        capturado["filtros"] = filtros
+        return listar_real(db, filtros, paginacion)
+
+    monkeypatch.setattr("app.api.services.ai.conv_service.listar_convocatorias", _espia)
+
+    r = client.post(
+        "/api/v1/ai/buscar", json={"pregunta": "convocatorias de la alcaldía de Medellín"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["fallback"] is False
+    assert body["filtros_interpretados"] == {"ciudad": "Medellín", "ambito": "territorial"}
+    filtros = capturado["filtros"]
+    assert filtros.ciudad == "Medellín"
+    assert filtros.ambito == "territorial"
+    # La búsqueda por IA hereda el comportamiento del listado: sin gestionadas.
+    assert filtros.incluir_gestionadas is False
+    assert filtros.estado_gestion is None
+
+
+def test_buscar_ambito_invalido_cae_a_texto_plano(client, monkeypatch):
+    _patch_complete(monkeypatch, lambda system, prompt: '{"ambito": "galactico"}')
+    r = client.post("/api/v1/ai/buscar", json={"pregunta": "algo de otro planeta"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["fallback"] is True
+    assert body["filtros_interpretados"] == {"q": "algo de otro planeta"}
 
 
 def test_buscar_pregunta_muy_larga_422(client):
@@ -176,3 +217,51 @@ def test_extraer_json_tolera_cercas_markdown():
 def test_extraer_json_falla_sin_json():
     with pytest.raises(ValueError):
         ai_service._extraer_json("sin llaves aquí")
+
+
+# ------------------------------------------------- unit: acotamiento de prompts
+def test_prompt_soporte_prohibe_hablar_de_infraestructura():
+    """El asistente es de USO: nunca explica cómo está construido el sistema."""
+    # Se afirma sobre la plantilla: el manual inyectado es contenido ajeno.
+    tmpl = prompts.SYSTEM_SOPORTE_TMPL
+    assert "PROHIBIDO" in tmpl
+    assert prompts.RESPUESTA_FUERA_DE_ALCANCE in tmpl
+    for tema in ("arquitectura", "Docker", "base de datos", "variables de entorno", "endpoints"):
+        assert tema in tmpl
+    # Ya no empuja al usuario hacia la documentación técnica del repositorio.
+    assert "README" not in tmpl
+    assert "agente de IA de código" not in tmpl
+
+
+def test_prompt_soporte_orienta_a_la_interfaz_con_el_manual():
+    tmpl = prompts.SYSTEM_SOPORTE_TMPL
+    assert "interfaz" in tmpl
+    assert "Asistente IA" in tmpl
+    # El manual real sigue siendo la única fuente y se inyecta en el prompt.
+    system = prompts.system_soporte()
+    assert "=== MANUAL DE USUARIO ===" in system
+    assert "{manual}" not in system
+
+
+def test_prompt_extraccion_declara_ciudad_y_ambito():
+    system = prompts.SYSTEM_EXTRACCION_FILTROS
+    assert '"ciudad"' in system
+    assert '"ambito"' in system
+    for ambito in ("nacional", "territorial", "internacional", "desconocido"):
+        assert ambito in system
+    # "territorial" debe quedar asociado a alcaldías/gobernaciones.
+    assert "alcaldías" in system
+    assert "ciudad" in prompts.CLAVES_FILTRO
+    assert "ambito" in prompts.CLAVES_FILTRO
+
+
+def test_claves_filtro_son_campos_reales_del_filtro():
+    """Toda clave que el modelo puede emitir existe en ConvocatoriaFiltros."""
+    from dataclasses import fields
+
+    from app.api.deps import ConvocatoriaFiltros
+
+    reales = {f.name for f in fields(ConvocatoriaFiltros)}
+    assert set(prompts.CLAVES_FILTRO) <= reales
+    assert set(ai_service._CAMPOS_FILTRO) <= reales
+    assert set(ai_service._CAMPOS_FIJOS) <= reales

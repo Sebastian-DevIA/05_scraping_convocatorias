@@ -1,14 +1,17 @@
 # Sistema automatizado de búsqueda de convocatorias
 
 Capta automáticamente **convocatorias reales y recientes** (licitaciones, fondos,
-subvenciones, RFP/EOI) desde **7 fuentes oficiales** — SECOP II, PNUD, MinCiencias,
-MinTIC, Banco Mundial, Grants.gov y UNGM (stub) —, guarda sus **requisitos** y el
-**enlace a la publicación original** (`url_original`), y las expone en un
-**dashboard web** con buscador, filtros y **asistente de IA**.
+subvenciones, RFP/EOI) desde **8 fuentes oficiales** — SECOP II, PNUD, MinCiencias,
+MinTIC, Banco Mundial, Grants.gov, SICON (Cultura de Bogotá) y UNGM (stub) —,
+guarda sus **requisitos** y el **enlace a la publicación original**
+(`url_original`), y las expone en un **dashboard web** con buscador, filtros,
+**asistente de IA** (de uso de la herramienta) y un **histórico de gestión**.
 
 Incluye un filtro especial para **fundaciones nuevas/primerizas**
-(`apto_fundaciones_nuevas`), que marca las convocatorias sin barreras de
-experiencia previa a partir de su contenido real. Todo corre con `docker compose`.
+(`apto_fundaciones_nuevas`), filtros por **ámbito** (nacional / territorial —
+alcaldías y gobernaciones — / internacional) y **ciudad**, y un **histórico** que
+registra a qué convocatorias ya se postuló la organización y las saca de la
+búsqueda para no repetir. Todo corre con `docker compose`.
 
 > 📖 **Antes de modificar, mejorar o dar contexto al software, lee
 > [`CLAUDE.md`](CLAUDE.md)** — contiene TODO: reglas, arquitectura, uso de agentes,
@@ -63,7 +66,7 @@ Al arrancar, `api` aplica migraciones y siembra las fuentes (idempotente); el
 │   │   ├── models/                # Fuente, Convocatoria, Ejecucion
 │   │   ├── schemas/               # Pydantic v2 (+ raw.py: contrato conector→pipeline)
 │   │   ├── connectors/            # base.py, http.py, __init__.py (auto-registro)
-│   │   │                          # secop, pnud, minciencias, mintic, worldbank, grantsgov, ungm
+│   │   │                          # secop, pnud, minciencias, mintic, worldbank, grantsgov, sicon, ungm
 │   │   ├── pipeline/              # normalizer (incl. apto_fundaciones_nuevas), dedupe, upsert, runner
 │   │   ├── api/                   # main.py, deps.py, routers/, services/
 │   │   ├── ai/                    # asistente de IA (búsqueda NL, resumen, soporte)

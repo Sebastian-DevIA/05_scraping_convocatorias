@@ -1,4 +1,4 @@
-"""Siembra idempotente de las 5 fuentes del MVP.
+"""Siembra idempotente de las fuentes del sistema.
 
 REGLA DURA: este script SOLO inserta/actualiza filas en `fuentes`.
 JAMÁS inserta convocatorias (esos datos vienen únicamente del scraping real).
@@ -34,6 +34,7 @@ FUENTES: list[dict] = [
         "activa": True,
         "max_paginas": 10,
         "rate_limit_seconds": 1.5,
+        "ambito_default": "Internacional",
     },
     {
         "codigo": "minciencias",
@@ -43,6 +44,7 @@ FUENTES: list[dict] = [
         "activa": True,
         "max_paginas": 10,
         "rate_limit_seconds": 1.5,
+        "ambito_default": "Nacional",
     },
     {
         "codigo": "mintic",
@@ -52,6 +54,7 @@ FUENTES: list[dict] = [
         "activa": True,
         "max_paginas": 10,
         "rate_limit_seconds": 1.5,
+        "ambito_default": "Nacional",
     },
     {
         "codigo": "ungm",
@@ -62,6 +65,7 @@ FUENTES: list[dict] = [
         "activa": False,
         "max_paginas": 5,
         "rate_limit_seconds": 2.0,
+        "ambito_default": "Internacional",
     },
     {
         "codigo": "worldbank",
@@ -72,6 +76,7 @@ FUENTES: list[dict] = [
         "activa": True,
         "max_paginas": 3,
         "rate_limit_seconds": 1.0,
+        "ambito_default": "Internacional",
     },
     {
         "codigo": "grantsgov",
@@ -82,17 +87,38 @@ FUENTES: list[dict] = [
         "activa": True,
         "max_paginas": 2,
         "rate_limit_seconds": 1.0,
+        "ambito_default": "Internacional",
+    },
+    {
+        "codigo": "sicon",
+        "nombre": "SICON - Convocatorias de Cultura de Bogotá (SCRD, IDARTES, FUGA, IDPC)",
+        # Plataforma ÚNICA del Distrito Capital (fomento cultural). API JSON con
+        # token público. Verificada en vivo 2026-07-23. El conector reporta
+        # ambito_fuente="Territorial" por registro; no necesita ambito_default.
+        "url_base": "https://sicon.scrd.gov.co/crud_SCRD_pv/api/DrupalWS/convocatorias_publicadas",
+        "tipo": "api",
+        "activa": True,
+        "max_paginas": 4,
+        "rate_limit_seconds": 1.0,
     },
 ]
 
 
 def _config(data: dict) -> dict:
-    """Config JSONB de la fuente. keywords vienen del env (editables sin código)."""
-    return {
+    """Config JSONB de la fuente. keywords vienen del env (editables sin código).
+
+    `ambito_default` es solo un RESPALDO para el pipeline: se aplica a los
+    registros cuyo conector no reporta un `ambito_fuente` propio. SECOP sí lo
+    reporta por registro (`ordenentidad`), así que no lo declara.
+    """
+    config = {
         "keywords": settings.keywords,
         "max_paginas": data["max_paginas"],
         "rate_limit_seconds": data["rate_limit_seconds"],
     }
+    if data.get("ambito_default"):
+        config["ambito_default"] = data["ambito_default"]
+    return config
 
 
 def seed() -> None:

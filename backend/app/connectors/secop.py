@@ -29,13 +29,31 @@ Mapeo a `RawConvocatoria` (campos crudos reales del dataset):
   departamento<- departamento_entidad     ciudad      <- ciudad_entidad
   monto      <- precio_base (Decimal)      moneda      = "COP"
   modalidad  <- modalidad_de_contratacion  estado_fuente<- estado_del_procedimiento
+  ambito_fuente <- ordenentidad (CRUDO: 'Territorial' | 'Nacional' |
+                   'Corporación Autónoma' | 'No Definido'; el pipeline lo mapea)
   fecha_publicacion <- fecha_de_publicacion_del (ISO floating -> UTC)
+  fecha_cierre <- fecha_de_recepcion_de (cierre de recepción de ofertas)
   url_original <- urlproceso.url (OBLIGATORIA: sin ella el registro se descarta)
   raw        = registro completo
 
-El dataset NO expone deadline de recepción de ofertas ni requisitos de
-participación (viven en documentos adjuntos), por eso ``fecha_apertura``,
-``fecha_cierre`` y ``requisitos`` quedan en None (nunca se inventan).
+Sobre ``fecha_de_recepcion_de`` (verificado en vivo el 2026-07-23): el dataset SÍ
+expone la fecha límite de recepción de ofertas, pero SOLO en las modalidades que
+la tienen (mínima cuantía, selección abreviada, licitación pública, concurso de
+méritos...). En contratación directa / régimen especial el campo simplemente NO
+viene en el registro (Socrata omite los nulos): 1.401.496 de 8.868.740 registros
+lo traen. Ausente o imparseable -> ``fecha_cierre = None`` (nunca se inventa).
+
+El dataset NO expone requisitos de participación ni fecha de apertura del proceso
+(viven en documentos adjuntos), por eso ``fecha_apertura`` y ``requisitos``
+quedan en None.
+
+DECISIÓN (2026-07-23): NO mapear ``fecha_de_apertura_de_respuesta`` a
+``fecha_apertura``. Se evaluó y se descartó: ese campo NO es la apertura de la
+convocatoria, es el acto de apertura de las ofertas YA recibidas, que ocurre al
+CERRAR. En los registros reales coincide con ``fecha_de_recepcion_de`` (p. ej.
+CO1.REQ.10650033: ambos 2026-07-27), así que mapearlo le diría al usuario que la
+convocatoria abre el día en que en realidad se cierra. ``fecha_apertura = None``
+es la respuesta honesta.
 """
 
 from __future__ import annotations
@@ -60,12 +78,16 @@ F_DESCRIPCION = "descripci_n_del_procedimiento"
 F_ENTIDAD = "entidad"
 F_DEPARTAMENTO = "departamento_entidad"
 F_CIUDAD = "ciudad_entidad"
+F_ORDEN_ENTIDAD = "ordenentidad"
 F_PRECIO = "precio_base"
 F_MODALIDAD = "modalidad_de_contratacion"
 F_ESTADO = "estado_del_procedimiento"
 F_ESTADO_APERTURA = "estado_de_apertura_del_proceso"
 F_ESTADO_RESUMEN = "estado_resumen"
 F_FECHA_PUB = "fecha_de_publicacion_del"
+# Fecha límite de recepción de ofertas. No viene en todos los registros: solo en
+# las modalidades que la tienen (Socrata omite el campo cuando es nulo).
+F_FECHA_RECEPCION = "fecha_de_recepcion_de"
 F_ADJUDICADO = "adjudicado"
 F_URL = "urlproceso"
 
@@ -242,10 +264,14 @@ class SecopConnector(BaseConnector):
             departamento=_txt(reg.get(F_DEPARTAMENTO)),
             ciudad=_txt(reg.get(F_CIUDAD)),
             # pais: default "Colombia" (SECOP es fuente nacional).
+            # Ámbito CRUDO ('Territorial'/'Nacional'/...): lo mapea el pipeline.
+            ambito_fuente=_txt(reg.get(F_ORDEN_ENTIDAD)),
             fecha_publicacion=_parse_dt_utc(reg.get(F_FECHA_PUB)),
-            # El dataset no expone deadline de ofertas ni requisitos -> None.
+            # Cierre de recepción de ofertas: solo en las modalidades que lo
+            # tienen; ausente/imparseable -> None (nunca se inventa una fecha).
+            fecha_cierre=_parse_dt_utc(reg.get(F_FECHA_RECEPCION)),
+            # El dataset no expone apertura del proceso ni requisitos -> None.
             fecha_apertura=None,
-            fecha_cierre=None,
             requisitos=None,
             url_original=url,
             raw=reg,
